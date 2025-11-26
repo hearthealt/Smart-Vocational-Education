@@ -4,12 +4,18 @@
 // @version      1.0.0
 // @description  智慧职教全能助手：集成学习和答题功能于一体，支持标签页切换，配置直接整合在各功能页面中
 // @author       caokun
+// @license      MIT
+// @icon         https://www.icve.com.cn/favicon.ico
 // @match        https://*.icve.com.cn/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @connect      *
 // @run-at       document-idle
+// @updateURL    https://github.com/hearthealt/Smart-Vocational-Education/raw/main/智慧职教全能助手.user.js
+// @downloadURL  https://github.com/hearthealt/Smart-Vocational-Education/raw/main/智慧职教全能助手.user.js
+// @homepageURL  https://github.com/hearthealt/Smart-Vocational-Education
+// @supportURL   https://github.com/hearthealt/Smart-Vocational-Education/issues
 // ==/UserScript==
 
 (function() {
