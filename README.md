@@ -49,7 +49,7 @@
 
 点击下方链接直接安装：
 
-[📥 点击安装脚本](https://raw.githubusercontent.com/hearthealt/Smart-Vocational-Education/main/icve-helper.user.js)
+[📥 点击安装脚本](https://raw.githubusercontent.com/hearthealt/Smart-Vocational-Education/master/icve-helper.user.js)
 
 **方法二：手动安装**
 
