@@ -38,7 +38,10 @@
 
 ### 前置要求
 
-1. 安装浏览器扩展：[Tampermonkey](https://www.tampermonkey.net/) 或 [Violentmonkey](https://violentmonkey.github.io/)
+1. 安装浏览器扩展（任选其一）：
+   - [Tampermonkey](https://www.tampermonkey.net/) - 最流行的用户脚本管理器
+   - [Violentmonkey](https://violentmonkey.github.io/) - 开源轻量的选择
+   - [ScriptCat（脚本猫）](https://scriptcat.org/) - 国产脚本管理器，功能丰富
 
 ### 安装脚本
 
@@ -125,6 +128,24 @@
 - OpenAI Compatible API
 
 ## 更新日志
+
+### v1.1.0
+- **代码架构优化**
+  - 新增 `Utils` 工具函数模块（sleep, formatTime, debounce, throttle）
+  - 新增 `Logger` 日志系统，方便调试
+  - 新增 `DOMCache` DOM元素缓存系统，提升性能
+  - 新增 `ConfigManager` 统一配置管理
+- **事件处理优化**
+  - 使用事件委托模式，减少事件监听器数量
+  - 统一的点击和变更事件处理
+- **答题功能增强**
+  - AI请求添加自动重试机制（最多2次重试）
+  - 改进错误处理和超时保护
+  - 更详细的日志输出
+- **性能提升**
+  - 防抖节流优化高频操作
+  - DOM查询结果缓存
+  - 减少重复的DOM操作
 
 ### v1.0.0
 - 初始版本发布

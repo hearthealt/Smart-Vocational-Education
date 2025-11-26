@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         智慧职教全能助手
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
+// @version      1.1.0
 // @description  智慧职教全能助手：集成学习和答题功能于一体，支持标签页切换，配置直接整合在各功能页面中
 // @author       caokun
 // @license      MIT
@@ -20,6 +20,149 @@
 
 (function() {
     'use strict';
+
+    // ==================== 工具函数模块 ====================
+    const Utils = {
+        // 延时函数
+        sleep: (ms) => new Promise(resolve => setTimeout(resolve, ms)),
+
+        // 格式化时间（秒转为 MM:SS 格式）
+        formatTime: (seconds) => {
+            if (!seconds || isNaN(seconds) || seconds === Infinity) return '0:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        },
+
+        // 防抖函数
+        debounce: (fn, delay = 300) => {
+            let timer = null;
+            return function(...args) {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(() => fn.apply(this, args), delay);
+            };
+        },
+
+        // 节流函数
+        throttle: (fn, delay = 300) => {
+            let lastTime = 0;
+            return function(...args) {
+                const now = Date.now();
+                if (now - lastTime >= delay) {
+                    lastTime = now;
+                    return fn.apply(this, args);
+                }
+            };
+        },
+
+        // 安全获取DOM元素
+        $(selector, parent = document) {
+            return parent.querySelector(selector);
+        },
+
+        // 安全获取多个DOM元素
+        $$(selector, parent = document) {
+            return Array.from(parent.querySelectorAll(selector));
+        },
+
+        // 带重试的异步操作
+        async retry(fn, maxRetries = 3, delay = 1000) {
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    return await fn();
+                } catch (error) {
+                    if (i === maxRetries - 1) throw error;
+                    await this.sleep(delay);
+                }
+            }
+        }
+    };
+
+    // ==================== 日志系统 ====================
+    const Logger = {
+        _enabled: true,
+        _prefix: '[智慧职教助手]',
+
+        enable() { this._enabled = true; },
+        disable() { this._enabled = false; },
+
+        _log(level, ...args) {
+            if (!this._enabled) return;
+            const timestamp = new Date().toLocaleTimeString();
+            const styles = {
+                info: 'color: #3b82f6',
+                success: 'color: #10b981',
+                warn: 'color: #f59e0b',
+                error: 'color: #ef4444'
+            };
+            console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](
+                `%c${this._prefix} [${timestamp}]`,
+                styles[level] || styles.info,
+                ...args
+            );
+        },
+
+        info(...args) { this._log('info', ...args); },
+        success(...args) { this._log('success', ...args); },
+        warn(...args) { this._log('warn', ...args); },
+        error(...args) { this._log('error', ...args); }
+    };
+
+    // ==================== DOM元素缓存 ====================
+    const DOMCache = {
+        _cache: new Map(),
+        _maxAge: 5000, // 缓存5秒
+
+        get(selector, forceRefresh = false) {
+            const now = Date.now();
+            const cached = this._cache.get(selector);
+
+            if (!forceRefresh && cached && (now - cached.time < this._maxAge)) {
+                return cached.element;
+            }
+
+            const element = document.querySelector(selector);
+            if (element) {
+                this._cache.set(selector, { element, time: now });
+            }
+            return element;
+        },
+
+        getAll(selector, forceRefresh = false) {
+            const now = Date.now();
+            const cacheKey = `all:${selector}`;
+            const cached = this._cache.get(cacheKey);
+
+            if (!forceRefresh && cached && (now - cached.time < this._maxAge)) {
+                return cached.elements;
+            }
+
+            const elements = Array.from(document.querySelectorAll(selector));
+            this._cache.set(cacheKey, { elements, time: now });
+            return elements;
+        },
+
+        clear() {
+            this._cache.clear();
+        },
+
+        // 面板专用元素获取（常用元素预缓存）
+        panel: {
+            get learningStatus() { return DOMCache.get('#learning-status'); },
+            get learningProgress() { return DOMCache.get('#learning-progress'); },
+            get learningProgressBar() { return DOMCache.get('#learning-progress-bar'); },
+            get learningCurrent() { return DOMCache.get('#learning-current'); },
+            get learningProcessed() { return DOMCache.get('#learning-processed'); },
+            get learningStart() { return DOMCache.get('#learning-start'); },
+            get learningStop() { return DOMCache.get('#learning-stop'); },
+            get examStatus() { return DOMCache.get('#exam-status'); },
+            get examProgress() { return DOMCache.get('#exam-progress'); },
+            get examProgressBar() { return DOMCache.get('#exam-progress-bar'); },
+            get examMessage() { return DOMCache.get('#exam-message'); },
+            get examStart() { return DOMCache.get('#exam-start'); },
+            get examStop() { return DOMCache.get('#exam-stop'); }
+        }
+    };
 
     // ==================== AI模型预设配置 ====================
     const AI_PRESETS = {
@@ -67,63 +210,133 @@
         }
     };
 
-    // ==================== 配置管理 ====================
+    // ==================== 配置管理（统一存储逻辑） ====================
+    const ConfigManager = {
+        // 配置键名映射
+        keys: {
+            learning: {
+                playbackRate: 'learning_playbackRate',
+                waitTimeAfterComplete: 'learning_waitTime',
+                documentPageInterval: 'learning_docInterval',
+                expandDelay: 'learning_expandDelay',
+                muteMedia: 'learning_muteMedia'
+            },
+            exam: {
+                delay: 'exam_delay',
+                autoSubmit: 'exam_autoSubmit',
+                currentAI: 'exam_currentAI'
+            },
+            progress: {
+                processedNodes: 'learning_processedNodes',
+                completedChapters: 'learning_completedChapters'
+            }
+        },
+
+        // 默认值
+        defaults: {
+            learning: {
+                playbackRate: 1.0,
+                waitTimeAfterComplete: 8,
+                documentPageInterval: 15,
+                expandDelay: 3,
+                muteMedia: false
+            },
+            exam: {
+                delay: 3000,
+                autoSubmit: false,
+                currentAI: 'qwen'
+            }
+        },
+
+        // 获取配置值
+        get(category, key) {
+            const storageKey = this.keys[category]?.[key];
+            const defaultValue = this.defaults[category]?.[key];
+            if (storageKey) {
+                return GM_getValue(storageKey, defaultValue);
+            }
+            return defaultValue;
+        },
+
+        // 设置配置值
+        set(category, key, value) {
+            const storageKey = this.keys[category]?.[key];
+            if (storageKey) {
+                GM_setValue(storageKey, value);
+                Logger.info(`配置已保存: ${category}.${key} =`, value);
+            }
+        },
+
+        // 批量保存配置
+        saveAll(config) {
+            // 保存学习配置
+            Object.keys(this.keys.learning).forEach(key => {
+                if (config.learning && config.learning[key] !== undefined) {
+                    GM_setValue(this.keys.learning[key], config.learning[key]);
+                }
+            });
+
+            // 保存答题配置
+            Object.keys(this.keys.exam).forEach(key => {
+                if (config.exam && config.exam[key] !== undefined) {
+                    GM_setValue(this.keys.exam[key], config.exam[key]);
+                }
+            });
+
+            // 保存主题到localStorage
+            if (config.theme) {
+                localStorage.setItem('icve_theme_mode', config.theme);
+            }
+        },
+
+        // 获取AI配置
+        getAIConfig(aiType) {
+            const preset = AI_PRESETS[aiType];
+            return {
+                apiKey: GM_getValue(`ai_key_${aiType}`, preset.defaultKey),
+                baseURL: GM_getValue(`ai_baseurl_${aiType}`, preset.baseURL),
+                model: GM_getValue(`ai_model_${aiType}`, preset.model)
+            };
+        },
+
+        // 保存AI配置
+        setAIConfig(aiType, key, value) {
+            GM_setValue(`ai_${key}_${aiType}`, value);
+        }
+    };
+
+    // 兼容旧接口的配置对象
     const CONFIG = {
-        // 学习模式配置
         learning: {
-            playbackRate: GM_getValue('learning_playbackRate', 1.0),
-            waitTimeAfterComplete: GM_getValue('learning_waitTime', 8),
-            documentPageInterval: GM_getValue('learning_docInterval', 15),
-            expandDelay: GM_getValue('learning_expandDelay', 3),
-            muteMedia: GM_getValue('learning_muteMedia', false),
+            playbackRate: ConfigManager.get('learning', 'playbackRate'),
+            waitTimeAfterComplete: ConfigManager.get('learning', 'waitTimeAfterComplete'),
+            documentPageInterval: ConfigManager.get('learning', 'documentPageInterval'),
+            expandDelay: ConfigManager.get('learning', 'expandDelay'),
+            muteMedia: ConfigManager.get('learning', 'muteMedia'),
         },
-        // 答题模式配置
         exam: {
-            delay: GM_getValue('exam_delay', 3000),
-            autoSubmit: GM_getValue('exam_autoSubmit', false),
-            currentAI: GM_getValue('exam_currentAI', 'qwen'),
+            delay: ConfigManager.get('exam', 'delay'),
+            autoSubmit: ConfigManager.get('exam', 'autoSubmit'),
+            currentAI: ConfigManager.get('exam', 'currentAI'),
         },
-        // 通用配置
         theme: localStorage.getItem('icve_theme_mode') || 'light',
-        currentTab: 'learning', // 始终默认打开学习页面
+        currentTab: 'learning',
     };
 
     // AI配置
     function getAIConfig() {
-        const preset = AI_PRESETS[CONFIG.exam.currentAI];
-        return {
-            apiKey: GM_getValue(`ai_key_${CONFIG.exam.currentAI}`, preset.defaultKey),
-            baseURL: GM_getValue(`ai_baseurl_${CONFIG.exam.currentAI}`, preset.baseURL),
-            model: GM_getValue(`ai_model_${CONFIG.exam.currentAI}`, preset.model)
-        };
+        return ConfigManager.getAIConfig(CONFIG.exam.currentAI);
     }
 
-    // 保存配置
+    // 保存配置（使用ConfigManager）
     function saveConfig() {
-        // 学习配置
-        GM_setValue('learning_playbackRate', CONFIG.learning.playbackRate);
-        GM_setValue('learning_waitTime', CONFIG.learning.waitTimeAfterComplete);
-        GM_setValue('learning_docInterval', CONFIG.learning.documentPageInterval);
-        GM_setValue('learning_expandDelay', CONFIG.learning.expandDelay);
-        GM_setValue('learning_muteMedia', CONFIG.learning.muteMedia);
-
-        // 答题配置
-        GM_setValue('exam_delay', CONFIG.exam.delay);
-        GM_setValue('exam_autoSubmit', CONFIG.exam.autoSubmit);
-        GM_setValue('exam_currentAI', CONFIG.exam.currentAI);
-
-        // 当前标签页
-        GM_setValue('current_tab', CONFIG.currentTab);
-
-        // 主题
-        localStorage.setItem('icve_theme_mode', CONFIG.theme);
+        ConfigManager.saveAll(CONFIG);
     }
 
     // 保存学习进度数据
     function saveLearningProgress() {
-        // 将 Set 转换为数组保存
-        GM_setValue('learning_processedNodes', Array.from(state.learning.processedNodes));
-        GM_setValue('learning_completedChapters', Array.from(state.learning.completedChapters));
+        GM_setValue(ConfigManager.keys.progress.processedNodes, Array.from(state.learning.processedNodes));
+        GM_setValue(ConfigManager.keys.progress.completedChapters, Array.from(state.learning.completedChapters));
     }
 
     // ==================== 状态管理 ====================
@@ -136,8 +349,8 @@
             completedCount: 0,
             totalCount: 0,
             examCount: 0,
-            processedNodes: new Set(GM_getValue('learning_processedNodes', [])),
-            completedChapters: new Set(GM_getValue('learning_completedChapters', [])),
+            processedNodes: new Set(GM_getValue(ConfigManager.keys.progress.processedNodes, [])),
+            completedChapters: new Set(GM_getValue(ConfigManager.keys.progress.completedChapters, [])),
         },
         // 答题模式状态
         exam: {
@@ -1930,145 +2143,169 @@
         document.head.appendChild(style);
     }
 
-    // ==================== 事件绑定 ====================
+    // ==================== 事件绑定（使用事件委托优化） ====================
     function bindEvents() {
+        const panel = document.getElementById('icve-tabbed-panel');
+        if (!panel) return;
+
         // 拖动面板
         makeDraggable();
 
-        // 主题切换
-        document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+        // 使用事件委托处理面板内的所有点击事件
+        panel.addEventListener('click', handlePanelClick);
 
-        // 折叠/展开
-        document.getElementById('panel-toggle').addEventListener('click', togglePanel);
+        // 使用事件委托处理所有change事件
+        panel.addEventListener('change', handlePanelChange);
 
-        // 标签页切换
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const tab = e.currentTarget.dataset.tab;
-                switchTab(tab);
-            });
-        });
-
-        // 学习标签页事件
-        bindLearningEvents();
-
-        // 答题标签页事件
-        bindExamEvents();
+        Logger.info('事件绑定完成');
     }
 
-    // ==================== 学习标签页事件 ====================
-    function bindLearningEvents() {
-        document.getElementById('learning-start')?.addEventListener('click', startLearning);
-        document.getElementById('learning-stop')?.addEventListener('click', stopLearning);
-        document.getElementById('learning-scan')?.addEventListener('click', scanLearningNodes);
-        document.getElementById('learning-reset')?.addEventListener('click', resetLearning);
+    // 统一处理点击事件
+    function handlePanelClick(e) {
+        const target = e.target;
+        const id = target.id || target.closest('[id]')?.id;
 
-        // 播放倍速设置
-        document.getElementById('learning-playback-rate')?.addEventListener('change', (e) => {
-            CONFIG.learning.playbackRate = parseFloat(e.target.value);
-            applyPlaybackRate();
-            saveConfig();
-        });
+        switch(id) {
+            // 头部控制
+            case 'theme-toggle':
+                toggleTheme();
+                break;
+            case 'panel-toggle':
+                togglePanel();
+                break;
 
-        // 完成等待时间
-        document.getElementById('learning-wait-time')?.addEventListener('change', (e) => {
-            CONFIG.learning.waitTimeAfterComplete = parseInt(e.target.value);
-            saveConfig();
-        });
+            // 学习控制
+            case 'learning-start':
+                startLearning();
+                break;
+            case 'learning-stop':
+                stopLearning();
+                break;
+            case 'learning-scan':
+                scanLearningNodes();
+                break;
+            case 'learning-reset':
+                resetLearning();
+                break;
 
-        // 翻页间隔
-        document.getElementById('learning-doc-interval')?.addEventListener('change', (e) => {
-            CONFIG.learning.documentPageInterval = parseInt(e.target.value);
-            saveConfig();
-        });
+            // 答题控制
+            case 'exam-start':
+                startExam();
+                break;
+            case 'exam-stop':
+                stopExam();
+                break;
+        }
 
-        // 展开延迟
-        document.getElementById('learning-expand-delay')?.addEventListener('change', (e) => {
-            CONFIG.learning.expandDelay = parseFloat(e.target.value);
-            saveConfig();
-        });
-
-        // 功能开关
-        document.getElementById('learning-mute-media')?.addEventListener('change', (e) => {
-            CONFIG.learning.muteMedia = e.target.checked;
-            applyMuteToCurrentMedia();
-            saveConfig();
-
-            // 更新静音按钮图标
-            const toggleIcon = document.querySelector('.btn-toggle .toggle-icon');
-            if (toggleIcon) {
-                toggleIcon.textContent = e.target.checked ? '🔇' : '🔊';
-            }
-        });
+        // 处理标签页切换
+        if (target.classList.contains('tab-btn') || target.closest('.tab-btn')) {
+            const tabBtn = target.classList.contains('tab-btn') ? target : target.closest('.tab-btn');
+            const tab = tabBtn.dataset.tab;
+            if (tab) switchTab(tab);
+        }
     }
 
-    // ==================== 答题标签页事件 ====================
-    function bindExamEvents() {
-        document.getElementById('exam-start')?.addEventListener('click', startExam);
-        document.getElementById('exam-stop')?.addEventListener('click', stopExam);
+    // 统一处理change事件
+    function handlePanelChange(e) {
+        const target = e.target;
+        const id = target.id;
+        const value = target.type === 'checkbox' ? target.checked : target.value;
 
-        // AI模型选择
-        document.getElementById('exam-ai-model')?.addEventListener('change', (e) => {
-            CONFIG.exam.currentAI = e.target.value;
-            const preset = AI_PRESETS[CONFIG.exam.currentAI];
-            const aiConfig = getAIConfig();
+        switch(id) {
+            // 学习配置
+            case 'learning-playback-rate':
+                CONFIG.learning.playbackRate = parseFloat(value);
+                applyPlaybackRate();
+                saveConfig();
+                Logger.info('播放倍速已更新:', CONFIG.learning.playbackRate);
+                break;
 
-            // 更新输入框
-            document.getElementById('exam-api-key').value = aiConfig.apiKey;
-            document.getElementById('exam-api-key').placeholder = preset.keyPlaceholder;
-            document.getElementById('exam-api-url').value = aiConfig.baseURL;
-            document.getElementById('exam-api-model-name').value = aiConfig.model;
+            case 'learning-wait-time':
+                CONFIG.learning.waitTimeAfterComplete = parseInt(value);
+                saveConfig();
+                break;
 
-            // 更新状态消息
-            updateExamMessage(`已切换到 ${preset.name}`, '#10b981');
-            setTimeout(() => {
-                updateExamMessage(`就绪（使用 ${preset.name}）`, '#64748b');
-            }, 2000);
+            case 'learning-doc-interval':
+                CONFIG.learning.documentPageInterval = parseInt(value);
+                saveConfig();
+                break;
 
-            saveConfig();
-        });
+            case 'learning-expand-delay':
+                CONFIG.learning.expandDelay = parseFloat(value);
+                saveConfig();
+                break;
 
-        // API Key
-        document.getElementById('exam-api-key')?.addEventListener('change', (e) => {
-            const newKey = e.target.value.trim();
-            GM_setValue(`ai_key_${CONFIG.exam.currentAI}`, newKey);
-            updateExamMessage('API Key已保存', '#10b981');
-            setTimeout(() => {
-                updateExamMessage(`就绪（使用 ${AI_PRESETS[CONFIG.exam.currentAI].name}）`, '#64748b');
-            }, 2000);
-        });
+            case 'learning-mute-media':
+                CONFIG.learning.muteMedia = value;
+                applyMuteToCurrentMedia();
+                saveConfig();
+                // 更新静音按钮图标
+                const toggleIcon = document.querySelector('.btn-toggle .toggle-icon');
+                if (toggleIcon) {
+                    toggleIcon.textContent = value ? '🔇' : '🔊';
+                }
+                break;
 
-        // API地址
-        document.getElementById('exam-api-url')?.addEventListener('change', (e) => {
-            const newURL = e.target.value.trim();
-            GM_setValue(`ai_baseurl_${CONFIG.exam.currentAI}`, newURL);
-            updateExamMessage('API地址已保存', '#10b981');
-            setTimeout(() => {
-                updateExamMessage(`就绪（使用 ${AI_PRESETS[CONFIG.exam.currentAI].name}）`, '#64748b');
-            }, 2000);
-        });
+            // 答题配置
+            case 'exam-ai-model':
+                CONFIG.exam.currentAI = value;
+                const preset = AI_PRESETS[CONFIG.exam.currentAI];
+                const aiConfig = getAIConfig();
 
-        // 模型名称
-        document.getElementById('exam-api-model-name')?.addEventListener('change', (e) => {
-            const newModel = e.target.value.trim();
-            GM_setValue(`ai_model_${CONFIG.exam.currentAI}`, newModel);
-            updateExamMessage('模型名称已保存', '#10b981');
-            setTimeout(() => {
-                updateExamMessage(`就绪（使用 ${AI_PRESETS[CONFIG.exam.currentAI].name}）`, '#64748b');
-            }, 2000);
-        });
+                // 更新输入框
+                const apiKeyInput = document.getElementById('exam-api-key');
+                const apiUrlInput = document.getElementById('exam-api-url');
+                const modelInput = document.getElementById('exam-api-model-name');
 
-        // 答题间隔
-        document.getElementById('exam-delay')?.addEventListener('change', (e) => {
-            CONFIG.exam.delay = parseInt(e.target.value) * 1000;
-            saveConfig();
-        });
+                if (apiKeyInput) {
+                    apiKeyInput.value = aiConfig.apiKey;
+                    apiKeyInput.placeholder = preset.keyPlaceholder;
+                }
+                if (apiUrlInput) apiUrlInput.value = aiConfig.baseURL;
+                if (modelInput) modelInput.value = aiConfig.model;
 
-        // 自动交卷
-        document.getElementById('exam-auto-submit')?.addEventListener('change', (e) => {
-            CONFIG.exam.autoSubmit = e.target.checked;
-            saveConfig();
-        });
+                updateExamMessage(`已切换到 ${preset.name}`, '#10b981');
+                setTimeout(() => {
+                    updateExamMessage(`就绪（使用 ${preset.name}）`, '#64748b');
+                }, 2000);
+                saveConfig();
+                Logger.info('AI模型已切换:', preset.name);
+                break;
+
+            case 'exam-api-key':
+                GM_setValue(`ai_key_${CONFIG.exam.currentAI}`, value.trim());
+                updateExamMessage('API Key已保存', '#10b981');
+                setTimeout(() => {
+                    updateExamMessage(`就绪（使用 ${AI_PRESETS[CONFIG.exam.currentAI].name}）`, '#64748b');
+                }, 2000);
+                break;
+
+            case 'exam-api-url':
+                GM_setValue(`ai_baseurl_${CONFIG.exam.currentAI}`, value.trim());
+                updateExamMessage('API地址已保存', '#10b981');
+                setTimeout(() => {
+                    updateExamMessage(`就绪（使用 ${AI_PRESETS[CONFIG.exam.currentAI].name}）`, '#64748b');
+                }, 2000);
+                break;
+
+            case 'exam-api-model-name':
+                GM_setValue(`ai_model_${CONFIG.exam.currentAI}`, value.trim());
+                updateExamMessage('模型名称已保存', '#10b981');
+                setTimeout(() => {
+                    updateExamMessage(`就绪（使用 ${AI_PRESETS[CONFIG.exam.currentAI].name}）`, '#64748b');
+                }, 2000);
+                break;
+
+            case 'exam-delay':
+                CONFIG.exam.delay = parseInt(value) * 1000;
+                saveConfig();
+                break;
+
+            case 'exam-auto-submit':
+                CONFIG.exam.autoSubmit = value;
+                saveConfig();
+                break;
+        }
     }
 
     // ==================== 工具函数 ====================
@@ -2561,7 +2798,7 @@
                     }
 
                     // 更新进度文本
-                    updateLearningProgressText(`${mediaType}: ${formatTime(current)} / ${formatTime(total)}`);
+                    updateLearningProgressText(`${mediaType}: ${Utils.formatTime(current)} / ${Utils.formatTime(total)}`);
                 }
             });
 
@@ -2783,16 +3020,6 @@
     state.learning.isDocument = false;
     state.learning.mediaWatching = false;
 
-    // ==================== 辅助函数：进度显示 ====================
-
-    // 格式化时间（秒转为 MM:SS 格式）
-    function formatTime(seconds) {
-        if (!seconds || isNaN(seconds) || seconds === Infinity) return '0:00';
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    }
-
     // 更新学习进度文本
     function updateLearningProgressText(text) {
         const progressText = document.getElementById('learning-progress-text');
@@ -2843,10 +3070,9 @@
         return { type: questionType, text: questionText, options: options, fillInputs: fillInputs, element: questionEl };
     }
 
-    // 查询答案
+    // 查询答案（带重试机制）
     async function searchAnswer(question) {
         try {
-            // 使用AI查询
             const aiConfig = getAIConfig();
             if (!aiConfig.apiKey || aiConfig.apiKey === '') {
                 updateExamMessage('请先配置API Key', '#ef4444');
@@ -2854,29 +3080,47 @@
             }
 
             updateExamMessage(`📡 正在使用 ${AI_PRESETS[CONFIG.exam.currentAI].name} 查询...`, '#2196F3');
-            const answer = await askAI(question);
 
+            // 使用重试机制
+            const answer = await Utils.retry(
+                () => askAI(question),
+                2, // 最多重试2次
+                1500 // 重试间隔1.5秒
+            );
+
+            Logger.success('AI回答成功:', answer?.substring(0, 50));
             return answer;
         } catch (error) {
+            Logger.error('查询失败:', error.message);
             updateExamMessage('❌ 查询失败: ' + error.message, '#ef4444');
             return null;
         }
     }
 
-    // 调用AI接口
+    // 调用AI接口（优化版）
     function askAI(question) {
         return new Promise((resolve, reject) => {
             const aiConfig = getAIConfig();
             const prompt = buildPrompt(question);
+
+            Logger.info('发送AI请求:', question.type);
+
             const requestBody = {
                 model: aiConfig.model,
                 messages: [
-                    { role: "system", content: "你是一个专业的答题助手。你需要根据题目内容，给出准确的答案。请严格按照要求的格式返回答案。" },
+                    {
+                        role: "system",
+                        content: "你是一个专业的答题助手。你需要根据题目内容，给出准确的答案。请严格按照要求的格式返回答案。"
+                    },
                     { role: "user", content: prompt }
                 ],
                 temperature: 0.1,
                 max_tokens: 500
             };
+
+            const timeoutId = setTimeout(() => {
+                reject(new Error('请求超时（30秒）'));
+            }, 30000);
 
             GM_xmlhttpRequest({
                 method: 'POST',
@@ -2888,18 +3132,21 @@
                 data: JSON.stringify(requestBody),
                 timeout: 30000,
                 onload: function(response) {
+                    clearTimeout(timeoutId);
                     try {
                         if (response.status !== 200) {
-                            // 尝试解析错误信息
+                            let errorMsg = `API错误(${response.status})`;
                             try {
                                 const errorData = JSON.parse(response.responseText);
-                                const errorMsg = errorData.error?.message || errorData.message || `API错误(${response.status})`;
-                                reject(new Error(errorMsg));
+                                errorMsg = errorData.error?.message || errorData.message || errorMsg;
                             } catch (e) {
-                                reject(new Error(`API返回错误: ${response.status} ${response.statusText}`));
+                                errorMsg = `API返回错误: ${response.status} ${response.statusText}`;
                             }
+                            Logger.error('API错误:', errorMsg);
+                            reject(new Error(errorMsg));
                             return;
                         }
+
                         const data = JSON.parse(response.responseText);
                         if (data.choices && data.choices.length > 0) {
                             const answer = data.choices[0].message.content.trim();
@@ -2910,11 +3157,19 @@
                             reject(new Error('AI返回数据格式错误'));
                         }
                     } catch (error) {
+                        Logger.error('解析响应失败:', error);
                         reject(new Error('解析AI返回数据失败'));
                     }
                 },
-                onerror: () => reject(new Error('网络请求失败')),
-                ontimeout: () => reject(new Error('请求超时'))
+                onerror: (err) => {
+                    clearTimeout(timeoutId);
+                    Logger.error('网络错误:', err);
+                    reject(new Error('网络请求失败'));
+                },
+                ontimeout: () => {
+                    clearTimeout(timeoutId);
+                    reject(new Error('请求超时'));
+                }
             });
         });
     }
@@ -3037,9 +3292,9 @@
         if (submitBtn && !submitBtn.disabled) {
             if (CONFIG.exam.autoSubmit) {
                 updateExamMessage('正在自动交卷...', '#10b981');
-                await sleep(1000);
+                await Utils.sleep(1000);
                 submitBtn.click();
-                await sleep(1500);
+                await Utils.sleep(1500);
                 const confirmed = await clickConfirmSubmit();
                 if (confirmed) {
                     updateExamMessage('已自动确认提交', '#10b981');
@@ -3065,13 +3320,13 @@
                 if (modal) confirmBtn = modal.querySelector('.ivu-btn-primary');
             }
             if (confirmBtn) {
-                await sleep(500);
+                await Utils.sleep(500);
                 confirmBtn.click();
-                await sleep(2000);
+                await Utils.sleep(2000);
                 await clickClosePage();
                 return true;
             }
-            await sleep(100);
+            await Utils.sleep(100);
         }
         return false;
     }
@@ -3092,12 +3347,12 @@
                 }
             }
             if (closeBtn) {
-                await sleep(500);
+                await Utils.sleep(500);
                 closeBtn.click();
                 updateExamMessage('已完成并关闭页面', '#10b981');
                 return true;
             }
-            await sleep(200);
+            await Utils.sleep(200);
         }
         return false;
     }
@@ -3110,7 +3365,7 @@
                 if (!question || !question.text) {
                     const submitted = await clickSubmitButton();
                     if (submitted) break;
-                    await sleep(2000);
+                    await Utils.sleep(2000);
                     break;
                 }
                 state.exam.currentQuestionIndex++;
@@ -3127,33 +3382,30 @@
                     updateExamMessage(`⚠️ 第 ${state.exam.currentQuestionIndex} 题未找到答案，跳过`, '#f59e0b');
                 }
 
-                await sleep(CONFIG.exam.delay);
+                await Utils.sleep(CONFIG.exam.delay);
 
                 const hasNext = clickNextButton();
                 if (!hasNext) {
-                    await sleep(1000);
+                    await Utils.sleep(1000);
                     await clickSubmitButton();
                     break;
                 }
-                await sleep(1000);
+                await Utils.sleep(1000);
             } catch (error) {
                 // 捕获任何错误，确保不会卡住
+                Logger.error('答题出错:', error);
                 updateExamMessage(`❌ 第 ${state.exam.currentQuestionIndex} 题出错: ${error.message}`, '#ef4444');
-                await sleep(2000);
+                await Utils.sleep(2000);
                 // 尝试点击下一题继续
                 const hasNext = clickNextButton();
                 if (!hasNext) break;
-                await sleep(1000);
+                await Utils.sleep(1000);
             }
         }
         state.exam.isRunning = false;
         document.getElementById('exam-start').disabled = false;
         document.getElementById('exam-stop').disabled = true;
-    }
-
-    // 辅助函数：延时
-    function sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+        Logger.info('答题完成');
     }
 
     // 开始答题
