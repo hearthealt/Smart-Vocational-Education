@@ -5,6 +5,11 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.4.2] - 2025-11-29
+
+### 改进
+- 隐藏"继续播放"提示框，避免干扰用户操作
+
 ## [1.4.1] - 2025-11-29
 
 ### 改进

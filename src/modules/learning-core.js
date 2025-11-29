@@ -400,20 +400,21 @@ export function handleDocument() {
 }
 
 /**
- * 点击"继续播放"按钮（如果存在）
+ * 隐藏"继续播放"提示框
  */
-function clickContinuePlayButton() {
-    // 方法1: 查找包含"继续播放"文本的主要按钮
-    const buttons = document.querySelectorAll('button');
-    for (let btn of buttons) {
-        const text = btn.textContent.trim();
-        if (text.includes('继续播放')) {
-            Logger.info('检测到"继续播放"提示，自动点击');
-            btn.click();
-            return true;
+function hideContinuePlayDialog() {
+    const dialogs = document.querySelectorAll('[role="dialog"]');
+    for (let dialog of dialogs) {
+        const titleSpan = dialog.querySelector('.el-message-box__title span');
+        if (titleSpan && titleSpan.textContent.includes('提示')) {
+            const messageDiv = dialog.querySelector('.el-message-box__message p');
+            if (messageDiv && messageDiv.textContent.includes('是否继续')) {
+                dialog.style.display = 'none';
+                Logger.info('已隐藏"继续播放"提示框');
+                return true;
+            }
         }
     }
-
     return false;
 }
 
@@ -564,26 +565,10 @@ export async function clickNode(nodeInfo) {
     if (nodeInfo.element) {
         nodeInfo.element.click();
 
-        // 多次尝试检测并点击"继续播放"按钮
-        // 第1次：1.5秒后
-        setTimeout(() => {
-            clickContinuePlayButton();
-        }, 1500);
-
-        // 第2次：3秒后（页面可能刷新后）
-        setTimeout(() => {
-            clickContinuePlayButton();
-        }, 3000);
-
-        // 第3次：4.5秒后
-        setTimeout(() => {
-            clickContinuePlayButton();
-        }, 4500);
-
-        // 最后检测内容类型
+        // 检测内容类型
         setTimeout(() => {
             detectContentType();
-        }, 5000);
+        }, 3000);
     }
 }
 
@@ -683,6 +668,18 @@ export function startLearning() {
     document.getElementById('learning-status').textContent = '运行中';
     const statusDot = document.getElementById('learning-status-dot');
     if (statusDot) statusDot.classList.add('running');
+
+    // 隐藏"继续播放"提示框
+    hideContinuePlayDialog();
+    // 使用 MutationObserver 持续监听并隐藏提示框
+    const observer = new MutationObserver(() => {
+        hideContinuePlayDialog();
+    });
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+    state.learning.dialogObserver = observer;
 
     Logger.info('开始自动学习');
     scanLearningNodes();
