@@ -26,6 +26,8 @@ lerna-debug.log*
 .env
 .env.local
 .env.*.local
+iflow.config.json
+ai.config.json
 
 # 操作系统
 Thumbs.db

@@ -5,6 +5,27 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.4.1] - 2025-11-29
+
+### 改进
+- 构建流程优化
+  - 引入 Vite 构建系统，提升开发与构建效率
+  - 使用 `vite-plugin-monkey` 插件支持 UserScript 打包
+  - 源码结构迁移至 `src/` 目录，实现逻辑与构建分离
+- 代码组织结构调整
+  - 主入口文件重构为 `src/main.js`
+  - 功能核心、UI组件、工具模块等按职责拆分至独立文件
+  - 样式统一由 `src/styles/index.js` 管理
+
+### 修复
+- 修复构建产物路径错误导致脚本无法加载的问题
+- 修复部分模块在打包后作用域异常的问题
+
+### 技术栈
+- 迁移至基于 Vite 的现代化前端构建体系
+- 支持 ES6+ 模块化开发与热重载（HMR）
+- 构建输出兼容 Tampermonkey 的 UserScript 格式
+
 ## [1.4.0] - 2025-11-28
 
 ### 新增
