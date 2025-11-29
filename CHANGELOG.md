@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.4.3] - 2025-11-29
+
+### 修复
+- 修复学习模式下“继续播放”检测逻辑失效的问题  
+- 修复视频播放完成后的状态判断异常，避免重复点击提示框
+
 ## [1.4.2] - 2025-11-29
 
 ### 改进
