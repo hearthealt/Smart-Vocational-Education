@@ -403,16 +403,20 @@ export function handleDocument() {
  * 隐藏"继续播放"提示框
  */
 function hideContinuePlayDialog() {
-    const dialogs = document.querySelectorAll('[role="dialog"]');
+    const dialogs = document.querySelectorAll('.el-message-box__wrapper');
     for (let dialog of dialogs) {
-        const titleSpan = dialog.querySelector('.el-message-box__title span');
-        if (titleSpan && titleSpan.textContent.includes('提示')) {
-            const messageDiv = dialog.querySelector('.el-message-box__message p');
-            if (messageDiv && messageDiv.textContent.includes('是否继续')) {
-                dialog.style.display = 'none';
-                Logger.info('已隐藏"继续播放"提示框');
-                return true;
-            }
+        // 检查是否可见
+        if (dialog.style.display === 'none') continue;
+        
+        // 检查是否包含"继续播放"相关内容
+        const dialogText = (dialog.textContent || '').replace(/\s+/g, ' ');
+        if (dialogText.includes('继续播放') || 
+            (dialogText.includes('是否继续') && dialogText.includes('播放'))) {
+            
+            // 直接隐藏提示框
+            dialog.style.display = 'none';
+            Logger.info('已隐藏"继续播放"提示框');
+            return true;
         }
     }
     return false;
@@ -669,17 +673,10 @@ export function startLearning() {
     const statusDot = document.getElementById('learning-status-dot');
     if (statusDot) statusDot.classList.add('running');
 
-    // 隐藏"继续播放"提示框
-    hideContinuePlayDialog();
-    // 使用 MutationObserver 持续监听并隐藏提示框
-    const observer = new MutationObserver(() => {
+    // 隐藏"继续播放"提示框（只执行一次）
+    setTimeout(() => {
         hideContinuePlayDialog();
-    });
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
-    state.learning.dialogObserver = observer;
+    }, 500);
 
     Logger.info('开始自动学习');
     scanLearningNodes();
