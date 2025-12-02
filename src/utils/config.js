@@ -2,19 +2,33 @@
  * AI模型预设配置
  */
 export const AI_PRESETS = {
-    qwen: {
-        name: '通义千问',
-        baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-        model: 'qwen-max',
+    xinliu: {
+        name: '心流',
+        baseURL: 'https://apis.iflow.cn/v1',
+        model: 'qwen3-max',
         defaultKey: '',
         keyPlaceholder: 'sk-xxx'
     },
-    gpt: {
-        name: 'OpenAI GPT',
+    openai: {
+        name: 'OpenAI',
         baseURL: 'https://api.openai.com/v1',
         model: 'gpt-4o-mini',
         defaultKey: '',
         keyPlaceholder: 'sk-xxx'
+    },
+    claude: {
+        name: 'Claude',
+        baseURL: 'https://api.anthropic.com/v1',
+        model: 'claude-3-5-sonnet-20241022',
+        defaultKey: '',
+        keyPlaceholder: 'sk-ant-xxx'
+    },
+    gemini: {
+        name: 'Google Gemini',
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta',
+        model: 'gemini-2.0-flash-exp',
+        defaultKey: '',
+        keyPlaceholder: 'AIzaSyxxx'
     },
     deepseek: {
         name: 'DeepSeek',
@@ -22,20 +36,6 @@ export const AI_PRESETS = {
         model: 'deepseek-chat',
         defaultKey: '',
         keyPlaceholder: 'sk-xxx'
-    },
-    kimi: {
-        name: 'Moonshot AI (Kimi)',
-        baseURL: 'https://api.moonshot.cn/v1',
-        model: 'moonshot-v1-8k',
-        defaultKey: '',
-        keyPlaceholder: 'sk-xxx'
-    },
-    zhipu: {
-        name: '智谱AI (GLM)',
-        baseURL: 'https://open.bigmodel.cn/api/paas/v4',
-        model: 'glm-4',
-        defaultKey: '',
-        keyPlaceholder: 'xxx.xxx'
     },
     custom: {
         name: '自定义',
@@ -82,7 +82,7 @@ export const ConfigManager = {
         exam: {
             delay: 3000,
             autoSubmit: false,
-            currentAI: 'qwen'
+            currentAI: 'xinliu'
         }
     },
 

@@ -452,6 +452,14 @@ export async function answerQuestions() {
     state.exam.isRunning = false;
     document.getElementById('exam-start').disabled = false;
     document.getElementById('exam-stop').disabled = true;
+    
+    const statusText = document.getElementById('exam-status');
+    const statusDot = document.getElementById('exam-status-dot');
+    if (statusText) statusText.textContent = '已完成';
+    if (statusDot) {
+        statusDot.className = 'status-dot completed';
+    }
+    
     Logger.info('答题完成');
 }
 
@@ -473,7 +481,13 @@ export async function startExam() {
 
     document.getElementById('exam-start').disabled = true;
     document.getElementById('exam-stop').disabled = false;
-    document.getElementById('exam-status').textContent = '🟢 运行中';
+    
+    const statusText = document.getElementById('exam-status');
+    const statusDot = document.getElementById('exam-status-dot');
+    if (statusText) statusText.textContent = '运行中';
+    if (statusDot) {
+        statusDot.className = 'status-dot running';
+    }
 
     updateExamMessage(`开始AI答题（使用 ${AI_PRESETS[CONFIG.exam.currentAI].name}）...`, '#10b981');
     updateExamProgress();
@@ -488,7 +502,13 @@ export function stopExam() {
     state.exam.isRunning = false;
     document.getElementById('exam-start').disabled = false;
     document.getElementById('exam-stop').disabled = true;
-    document.getElementById('exam-status').textContent = '⏸️ 已停止';
+    
+    const statusText = document.getElementById('exam-status');
+    const statusDot = document.getElementById('exam-status-dot');
+    if (statusText) statusText.textContent = '已停止';
+    if (statusDot) {
+        statusDot.className = 'status-dot';
+    }
 
     updateExamMessage('已停止答题', '#f59e0b');
 }

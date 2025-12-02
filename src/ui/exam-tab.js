@@ -27,102 +27,82 @@ export function createExamTab() {
 
     return `
         <div class="tab-inner">
-            <!-- 状态卡片 - 紧凑型 -->
-            <div class="status-card-compact">
-                <div class="status-inline">
-                    <span class="status-badge">
-                        <span class="badge-icon">🎯</span>
-                        <span class="badge-value" id="exam-status">就绪</span>
-                    </span>
-                    <span class="status-badge">
-                        <span class="badge-icon">📊</span>
-                        <span class="badge-value" id="exam-progress">0/0</span>
-                    </span>
-                    <span class="status-badge">
-                        <span class="badge-icon">🤖</span>
-                        <span class="badge-value">${AI_PRESETS[CONFIG.exam.currentAI].name}</span>
-                    </span>
+            <!-- 状态概览 -->
+            <div class="exam-status-compact">
+                <div class="status-line">
+                    <div class="status-left">
+                        <span class="status-dot" id="exam-status-dot"></span>
+                        <span class="status-text" id="exam-status">就绪</span>
+                    </div>
+                    <div class="status-right">
+                        <span class="progress-mini" id="exam-progress">0/0</span>
+                    </div>
                 </div>
                 <div class="progress-bar-wrapper">
                     <div class="progress-bar" id="exam-progress-bar" data-progress="0%"></div>
                 </div>
             </div>
 
-            <!-- 快速配置栏 -->
-            <div class="quick-config">
-                <div class="config-item config-ai">
-                    <label class="config-label">🔮</label>
-                    <select id="exam-ai-model" class="select-control select-compact">
+            <!-- AI与密钥配置 -->
+            <div class="exam-config-compact">
+                <div class="config-row">
+                    <label class="row-label">🔮 AI模型</label>
+                    <select id="exam-ai-model" class="select-control select-mini">
                         ${aiOptions}
                     </select>
                 </div>
-                <div class="config-item config-delay">
-                    <label class="config-label">⏱️</label>
-                    <div class="input-with-unit-inline">
-                        <input type="number" id="exam-delay" class="input-control input-compact"
-                               value="${CONFIG.exam.delay / 1000}" min="2" max="15">
-                        <span class="unit">秒</span>
+                <div class="config-row config-key">
+                    <label class="row-label">🔑 密钥</label>
+                    <input type="text" id="exam-api-key" class="input-control input-mini"
+                           value="${aiConfig.apiKey}"
+                           placeholder="${AI_PRESETS[CONFIG.exam.currentAI].keyPlaceholder}">
+                </div>
+                <div class="config-row-dual">
+                    <div class="config-col">
+                        <label class="row-label-sm">⏱️ 延迟</label>
+                        <div class="input-unit-mini">
+                            <input type="number" id="exam-delay" class="input-mini-num"
+                                   value="${CONFIG.exam.delay / 1000}" min="2" max="15">
+                            <span class="unit-sm">秒</span>
+                        </div>
+                    </div>
+                    <div class="config-col">
+                        <label class="row-label-sm">📝 交卷</label>
+                        <label class="switch-mini">
+                            <input type="checkbox" id="exam-auto-submit" ${CONFIG.exam.autoSubmit ? 'checked' : ''}>
+                            <span class="slider-mini"></span>
+                        </label>
                     </div>
                 </div>
-                <div class="config-item config-submit">
-                    <label class="switch-item-inline">
-                        <input type="checkbox" id="exam-auto-submit" ${CONFIG.exam.autoSubmit ? 'checked' : ''}>
-                        <span class="switch-label-inline">自动交卷</span>
-                    </label>
-                </div>
-            </div>
-
-            <!-- API密钥输入 -->
-            <div class="api-key-section">
-                <div class="api-key-header">
-                    <span class="api-icon">🔑</span>
-                    <span class="api-label">API Key</span>
-                    <small class="api-hint">需要密钥才能使用AI答题</small>
-                </div>
-                <input type="text" id="exam-api-key" class="input-control input-api-key"
-                       value="${aiConfig.apiKey}"
-                       placeholder="${AI_PRESETS[CONFIG.exam.currentAI].keyPlaceholder}">
             </div>
 
             <!-- 控制按钮 -->
-            <div class="control-buttons-group">
-                <div class="primary-actions">
-                    <button class="btn btn-primary btn-start" id="exam-start">▶️ 开始答题</button>
-                    <button class="btn btn-primary btn-stop" id="exam-stop" disabled>⏹ 停止答题</button>
-                </div>
+            <div class="exam-buttons-compact">
+                <button class="btn btn-primary btn-start" id="exam-start">▶️ 开始</button>
+                <button class="btn btn-primary btn-stop" id="exam-stop" disabled>⏹ 停止</button>
             </div>
 
             <!-- 高级配置 -->
-            <details class="advanced-settings">
-                <summary>⚙️ 高级配置（可选）</summary>
-                <div class="advanced-content">
-                    <div class="advanced-item">
-                        <label>
-                            <span class="label-icon">🌐</span>
-                            <span>API 地址</span>
-                        </label>
-                        <input type="text" id="exam-api-url" class="input-control"
+            <details class="advanced-mini">
+                <summary>⚙️ 高级</summary>
+                <div class="advanced-body">
+                    <div class="advanced-row">
+                        <label>🌐 API地址</label>
+                        <input type="text" id="exam-api-url" class="input-control input-mini"
                                value="${aiConfig.baseURL}"
                                placeholder="https://api.example.com/v1">
-                        <small class="hint">默认使用官方地址，如需使用代理可修改</small>
                     </div>
-                    <div class="advanced-item">
-                        <label>
-                            <span class="label-icon">🎯</span>
-                            <span>模型名称</span>
-                        </label>
-                        <input type="text" id="exam-api-model-name" class="input-control"
+                    <div class="advanced-row">
+                        <label>🎯 模型</label>
+                        <input type="text" id="exam-api-model-name" class="input-control input-mini"
                                value="${aiConfig.model}"
-                               placeholder="gpt-4">
-                        <small class="hint">默认使用推荐模型，高级用户可自定义</small>
+                               placeholder="model-name">
                     </div>
                 </div>
             </details>
 
-            <!-- 状态消息 -->
-            <div class="status-message" id="exam-message">
-                💡 配置完成后点击"开始答题"
-            </div>
+            <!-- 状态提示 -->
+            <div class="status-msg-mini" id="exam-message">💡 配置完成后点击"开始"</div>
         </div>
     `;
 }
