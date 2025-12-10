@@ -1,19 +1,25 @@
-import { state, saveLearningProgress } from '../utils/state.js';
-import { Logger } from '../utils/logger.js';
-import { Utils } from '../utils/index.js';
-import { CONFIG } from '../ui/config-instance.js';
-
 /**
  * 学习模块 - 完整功能
  */
 
+import { state, saveLearningProgress } from '../utils/state';
+import { Logger } from '../utils/logger';
+import { Utils } from '../utils/index';
+import { CONFIG } from '../ui/config-instance';
+import { ErrorHandler } from '../utils/error-handler';
+import { DOMCache } from '../utils/dom-cache';
+import type { LearningNode, PageInfo } from '../types/index';
+
+// 媒体进度更新节流时间（毫秒）
+const MEDIA_PROGRESS_THROTTLE = 500;
+
 /**
  * 检查节点是否是考试/测验类型
  */
-export function isExamNode(nodeElement) {
+export function isExamNode(nodeElement: HTMLElement): boolean {
     const examButton = nodeElement.querySelector('.li_action .btn_dt');
     if (examButton) {
-        const btnText = examButton.textContent.trim();
+        const btnText = examButton.textContent?.trim() || '';
         if (btnText.includes('开始答题') || btnText.includes('答题') || btnText.includes('考试') || btnText.includes('测验')) {
             return true;
         }
@@ -24,7 +30,7 @@ export function isExamNode(nodeElement) {
 /**
  * 扫描学习节点
  */
-export function scanLearningNodes() {
+export function scanLearningNodes(): void {
     const nodes = document.querySelectorAll('.panelList .node');
     state.learning.allNodes = [];
     state.learning.completedCount = 0;
@@ -32,19 +38,20 @@ export function scanLearningNodes() {
     state.learning.totalCount = nodes.length;
 
     nodes.forEach((node, index) => {
-        const titleElement = node.querySelector('.title');
-        const statusIcon = node.querySelector('.jd');
-        const title = titleElement ? titleElement.textContent.trim() : `节点${index + 1}`;
-        const id = node.id;
+        const nodeElement = node as HTMLElement;
+        const titleElement = nodeElement.querySelector('.title');
+        const statusIcon = nodeElement.querySelector('.jd');
+        const title = titleElement ? titleElement.textContent?.trim() || `节点${index + 1}` : `节点${index + 1}`;
+        const id = nodeElement.id;
         const isCompleted = (statusIcon && statusIcon.classList.contains('wc')) || state.learning.processedNodes.has(id);
 
-        const isExam = isExamNode(node);
+        const isExam = isExamNode(nodeElement);
         if (isExam) {
             state.learning.examCount++;
         }
 
         state.learning.allNodes.push({
-            element: node,
+            element: nodeElement,
             id: id,
             title: title,
             isCompleted: isCompleted,
@@ -69,42 +76,42 @@ export function scanLearningNodes() {
 /**
  * 更新学习状态显示
  */
-export function updateLearningStatus() {
+export function updateLearningStatus(): void {
     const progressText = `${state.learning.completedCount}/${state.learning.totalCount}`;
-    const progressElement = document.getElementById('learning-progress');
 
+    // 使用 DOMCache 优化 DOM 操作
+    const progressElement = DOMCache.getById('learning-progress');
     if (progressElement) {
-        if (state.learning.examCount > 0) {
-            progressElement.textContent = progressText;
-            progressElement.title = `跳过 ${state.learning.examCount} 个考试/测验节点`;
-        } else {
-            progressElement.textContent = progressText;
-            progressElement.title = '';
-        }
+        progressElement.textContent = progressText;
+        progressElement.title = state.learning.examCount > 0
+            ? `跳过 ${state.learning.examCount} 个考试/测验节点`
+            : '';
     }
 
-    document.getElementById('learning-processed').textContent =
-        state.learning.processedNodes.size;
+    DOMCache.setText('learning-processed', String(state.learning.processedNodes.size));
 
-    if (state.learning.currentNode && state.learning.currentNode.title) {
-        const shortTitle = state.learning.currentNode.title.length > 18
-            ? state.learning.currentNode.title.substring(0, 18) + '...'
-            : state.learning.currentNode.title;
-        document.getElementById('learning-current').textContent = shortTitle;
-        document.getElementById('learning-current').title = state.learning.currentNode.title;
-    } else {
-        document.getElementById('learning-current').textContent = '无';
-        document.getElementById('learning-current').title = '';
+    const currentElement = DOMCache.getById('learning-current');
+    if (currentElement) {
+        if (state.learning.currentNode && state.learning.currentNode.title) {
+            const shortTitle = state.learning.currentNode.title.length > 18
+                ? state.learning.currentNode.title.substring(0, 18) + '...'
+                : state.learning.currentNode.title;
+            currentElement.textContent = shortTitle;
+            currentElement.title = state.learning.currentNode.title;
+        } else {
+            currentElement.textContent = '无';
+            currentElement.title = '';
+        }
     }
 }
 
 /**
  * 应用播放倍速
  */
-export function applyPlaybackRate() {
-    const mediaElements = [
-        ...document.querySelectorAll('audio'),
-        ...document.querySelectorAll('video')
+export function applyPlaybackRate(): void {
+    const mediaElements: HTMLMediaElement[] = [
+        ...Array.from(document.querySelectorAll('audio')),
+        ...Array.from(document.querySelectorAll('video'))
     ];
     mediaElements.forEach(media => {
         media.playbackRate = CONFIG.learning.playbackRate;
@@ -114,10 +121,10 @@ export function applyPlaybackRate() {
 /**
  * 应用静音设置
  */
-export function applyMuteToCurrentMedia() {
-    const mediaElements = [
-        ...document.querySelectorAll('audio'),
-        ...document.querySelectorAll('video')
+export function applyMuteToCurrentMedia(): void {
+    const mediaElements: HTMLMediaElement[] = [
+        ...Array.from(document.querySelectorAll('audio')),
+        ...Array.from(document.querySelectorAll('video'))
     ];
     mediaElements.forEach(media => {
         media.muted = CONFIG.learning.muteMedia;
@@ -127,22 +134,20 @@ export function applyMuteToCurrentMedia() {
 /**
  * 重置学习进度
  */
-export function resetLearning() {
-    if (confirm('确定要清空所有已处理节点的记录吗？')) {
-        state.learning.processedNodes.clear();
-        if (state.learning.completedChapters) {
-            state.learning.completedChapters.clear();
-        }
-        saveLearningProgress();
-        scanLearningNodes();
-        Logger.warn('已重置所有学习进度');
+export function resetLearning(): void {
+    state.learning.processedNodes.clear();
+    if (state.learning.completedChapters) {
+        state.learning.completedChapters.clear();
     }
+    saveLearningProgress();
+    scanLearningNodes();
+    Logger.warn('已重置所有学习进度');
 }
 
 /**
  * 更新学习进度文本
  */
-export function updateLearningProgressText(text) {
+export function updateLearningProgressText(text: string): void {
     const progressText = document.getElementById('learning-progress-text');
     if (progressText) {
         progressText.textContent = text;
@@ -152,13 +157,14 @@ export function updateLearningProgressText(text) {
 /**
  * 通过API获取章节内容
  */
-export async function fetchChapterContentByAPI(chapterId) {
+export async function fetchChapterContentByAPI(chapterId: string): Promise<unknown | null> {
     try {
         const urlParams = new URLSearchParams(window.location.search);
         const courseInfoId = urlParams.get('courseInfoId');
         const courseId = urlParams.get('courseId');
 
         if (!courseInfoId || !courseId) {
+            Logger.warn('无法获取课程参数，跳过 API 预加载');
             return null;
         }
 
@@ -174,6 +180,7 @@ export async function fetchChapterContentByAPI(chapterId) {
         });
 
         if (!response.ok) {
+            Logger.warn(`章节内容 API 返回 ${response.status}，将使用点击方式展开`);
             return null;
         }
 
@@ -181,6 +188,8 @@ export async function fetchChapterContentByAPI(chapterId) {
         return data;
 
     } catch (error) {
+        // 静默处理，因为这只是预加载优化，失败不影响主流程
+        ErrorHandler.handle(error as Error, '获取章节内容', true);
         return null;
     }
 }
@@ -188,31 +197,33 @@ export async function fetchChapterContentByAPI(chapterId) {
 /**
  * 查找并展开下一个未完成的章节
  */
-export async function expandNextUncompletedSection() {
+export async function expandNextUncompletedSection(): Promise<boolean> {
     updateLearningProgressText('🔍 正在查找下一个章节...');
 
     const sections = document.querySelectorAll('.one > .draggablebox > span > .collapse-panel');
 
-    for (let section of sections) {
-        const panelTitle = section.querySelector('.panel-title');
-        const panelContent = section.querySelector('.panel-content');
+    for (const section of Array.from(sections)) {
+        const sectionElement = section as HTMLElement;
+        const panelTitle = sectionElement.querySelector('.panel-title');
+        const panelContent = sectionElement.querySelector('.panel-content') as HTMLElement | null;
 
         if (!panelTitle || !panelContent) continue;
 
         // 如果章节是展开的，检查是否所有子节点都完成了
         if (panelContent.style.display !== 'none') {
-            const nodes = section.querySelectorAll('.panelList .node');
+            const nodes = sectionElement.querySelectorAll('.panelList .node');
 
             if (nodes.length > 0) {
                 const allCompleted = Array.from(nodes).every(node => {
-                    const statusIcon = node.querySelector('.jd');
-                    const id = node.id;
-                    const isExam = isExamNode(node);
+                    const nodeElement = node as HTMLElement;
+                    const statusIcon = nodeElement.querySelector('.jd');
+                    const id = nodeElement.id;
+                    const isExam = isExamNode(nodeElement);
                     return (statusIcon && statusIcon.classList.contains('wc')) || state.learning.processedNodes.has(id) || isExam;
                 });
 
                 if (allCompleted) {
-                    const chapterId = section.id;
+                    const chapterId = sectionElement.id;
 
                     if (!state.learning.completedChapters) {
                         state.learning.completedChapters = new Set();
@@ -228,13 +239,13 @@ export async function expandNextUncompletedSection() {
         }
         // 如果章节是折叠的
         else {
-            const chapterId = section.id;
+            const chapterId = sectionElement.id;
 
             if (state.learning.completedChapters && state.learning.completedChapters.has(chapterId)) {
                 continue;
             }
 
-            const titleText = panelTitle.textContent.trim().substring(0, 40);
+            const titleText = (panelTitle.textContent?.trim() || '').substring(0, 40);
             updateLearningProgressText(`📂 正在展开新章节：${titleText}...`);
 
             // 方法1: 先通过API获取内容
@@ -242,7 +253,7 @@ export async function expandNextUncompletedSection() {
             await Utils.sleep(500);
 
             // 方法2: 点击箭头图标展开
-            const arrow = panelTitle.querySelector('.jiantou');
+            const arrow = panelTitle.querySelector('.jiantou') as HTMLElement | null;
             if (arrow) {
                 arrow.click();
                 await Utils.sleep(800);
@@ -252,19 +263,19 @@ export async function expandNextUncompletedSection() {
             await Utils.sleep(2000);
 
             // 多次检查节点是否出现
-            let nodes = section.querySelectorAll('.panelList .node');
+            let nodes = sectionElement.querySelectorAll('.panelList .node');
             let retryCount = 0;
             const maxRetries = 5;
 
             while (nodes.length === 0 && retryCount < maxRetries) {
                 await Utils.sleep(1500);
-                nodes = section.querySelectorAll('.panelList .node');
+                nodes = sectionElement.querySelectorAll('.panelList .node');
                 retryCount++;
 
                 if (nodes.length === 0 && retryCount === 2) {
-                    const arrow = panelTitle.querySelector('.jiantou');
-                    if (arrow) {
-                        arrow.click();
+                    const retryArrow = panelTitle.querySelector('.jiantou') as HTMLElement | null;
+                    if (retryArrow) {
+                        retryArrow.click();
                         await Utils.sleep(1000);
                     }
                 }
@@ -292,11 +303,11 @@ export async function expandNextUncompletedSection() {
 /**
  * 检测文档页码
  */
-export function getDocumentPageInfo() {
+export function getDocumentPageInfo(): PageInfo | null {
     const pageDiv = document.querySelector('.page');
     if (!pageDiv) return null;
 
-    const match = pageDiv.textContent.match(/(\d+)\s*\/\s*(\d+)/);
+    const match = pageDiv.textContent?.match(/(\d+)\s*\/\s*(\d+)/);
     if (match) {
         return {
             current: parseInt(match[1]),
@@ -309,12 +320,12 @@ export function getDocumentPageInfo() {
 /**
  * 点击下一页
  */
-export function clickNextPage() {
+export function clickNextPage(): boolean {
     const buttons = document.querySelectorAll('.page button');
-    for (let btn of buttons) {
+    for (const btn of Array.from(buttons)) {
         const span = btn.querySelector('span');
-        if (span && span.textContent.includes('下一页')) {
-            btn.click();
+        if (span && span.textContent?.includes('下一页')) {
+            (btn as HTMLElement).click();
             return true;
         }
     }
@@ -324,7 +335,7 @@ export function clickNextPage() {
 /**
  * 处理文档类型内容
  */
-export function handleDocument() {
+export function handleDocument(): void {
     const pageInfo = getDocumentPageInfo();
 
     if (pageInfo) {
@@ -333,11 +344,7 @@ export function handleDocument() {
 
         // 更新进度条
         const percentage = (pageInfo.current / pageInfo.total) * 100;
-        const progressBar = document.getElementById('learning-progress-bar');
-        if (progressBar) {
-            progressBar.style.width = `${percentage}%`;
-            progressBar.setAttribute('data-progress', `${Math.round(percentage)}%`);
-        }
+        Utils.updateProgressBar('learning-progress-bar', percentage);
 
         // 更新进度文本
         updateLearningProgressText(`文档: 第 ${pageInfo.current}/${pageInfo.total} 页`);
@@ -359,10 +366,7 @@ export function handleDocument() {
 
             // 重置进度条
             setTimeout(() => {
-                const progressBar = document.getElementById('learning-progress-bar');
-                if (progressBar) {
-                    progressBar.style.width = '0%';
-                }
+                Utils.resetProgressBar('learning-progress-bar');
             }, 1000);
 
             // 标记当前节点为已处理
@@ -402,19 +406,20 @@ export function handleDocument() {
 /**
  * 隐藏"继续播放"提示框
  */
-function hideContinuePlayDialog() {
+function hideContinuePlayDialog(): boolean {
     const dialogs = document.querySelectorAll('.el-message-box__wrapper');
-    for (let dialog of dialogs) {
+    for (const dialog of Array.from(dialogs)) {
+        const dialogElement = dialog as HTMLElement;
         // 检查是否可见
-        if (dialog.style.display === 'none') continue;
-        
+        if (dialogElement.style.display === 'none') continue;
+
         // 检查是否包含"继续播放"相关内容
-        const dialogText = (dialog.textContent || '').replace(/\s+/g, ' ');
-        if (dialogText.includes('继续播放') || 
+        const dialogText = (dialogElement.textContent || '').replace(/\s+/g, ' ');
+        if (dialogText.includes('继续播放') ||
             (dialogText.includes('是否继续') && dialogText.includes('播放'))) {
-            
+
             // 直接隐藏提示框
-            dialog.style.display = 'none';
+            dialogElement.style.display = 'none';
             Logger.info('已隐藏"继续播放"提示框');
             return true;
         }
@@ -425,10 +430,10 @@ function hideContinuePlayDialog() {
 /**
  * 播放媒体
  */
-export function playMedia(mediaElements) {
-    mediaElements.forEach((media, index) => {
-        if (media.dataset.processed) return;
-        media.dataset.processed = 'true';
+export function playMedia(mediaElements: HTMLMediaElement[]): void {
+    mediaElements.forEach((media) => {
+        if ((media as HTMLMediaElement & { dataset: { processed?: string } }).dataset.processed) return;
+        (media as HTMLMediaElement & { dataset: { processed?: string } }).dataset.processed = 'true';
 
         const mediaType = media.tagName.toLowerCase() === 'video' ? '视频' : '音频';
 
@@ -441,24 +446,28 @@ export function playMedia(mediaElements) {
         // 更新进度文本
         updateLearningProgressText(`${mediaType}播放中...`);
 
-        // 监听播放进度
-        media.addEventListener('timeupdate', () => {
+        // 创建节流的进度更新函数
+        let lastUpdateTime = 0;
+        const throttledProgressUpdate = (): void => {
+            const now = Date.now();
+            if (now - lastUpdateTime < MEDIA_PROGRESS_THROTTLE) return;
+            lastUpdateTime = now;
+
             if (media.duration > 0) {
                 const current = media.currentTime;
                 const total = media.duration;
                 const percentage = (current / total) * 100;
 
                 // 更新进度条
-                const progressBar = document.getElementById('learning-progress-bar');
-                if (progressBar) {
-                    progressBar.style.width = `${percentage}%`;
-                    progressBar.setAttribute('data-progress', `${Math.round(percentage)}%`);
-                }
+                Utils.updateProgressBar('learning-progress-bar', percentage);
 
                 // 更新进度文本
                 updateLearningProgressText(`${mediaType}: ${Utils.formatTime(current)} / ${Utils.formatTime(total)}`);
             }
-        });
+        };
+
+        // 监听播放进度（使用节流）
+        media.addEventListener('timeupdate', throttledProgressUpdate);
 
         // 监听播放结束
         media.addEventListener('ended', () => {
@@ -474,10 +483,7 @@ export function playMedia(mediaElements) {
             }
 
             // 重置进度条
-            const progressBar = document.getElementById('learning-progress-bar');
-            if (progressBar) {
-                progressBar.style.width = '0%';
-            }
+            Utils.resetProgressBar('learning-progress-bar');
             updateLearningProgressText(`${mediaType}已完成`);
 
             if (state.learning.isRunning) {
@@ -499,11 +505,11 @@ export function playMedia(mediaElements) {
 /**
  * 检测内容类型并处理
  */
-export function detectContentType() {
+export function detectContentType(): void {
     // 首先检查是否是考试/测验页面
     const examButton = document.querySelector('.li_action .btn_dt, .btn_dt');
     if (examButton) {
-        const btnText = examButton.textContent.trim();
+        const btnText = examButton.textContent?.trim() || '';
         if (btnText.includes('开始答题') || btnText.includes('答题') ||
             btnText.includes('考试') || btnText.includes('测验')) {
             updateLearningProgressText('⏭️ 检测到考试页面，已跳过');
@@ -526,9 +532,9 @@ export function detectContentType() {
         }
     }
 
-    const mediaElements = [
-        ...document.querySelectorAll('audio'),
-        ...document.querySelectorAll('video')
+    const mediaElements: HTMLMediaElement[] = [
+        ...Array.from(document.querySelectorAll('audio')),
+        ...Array.from(document.querySelectorAll('video'))
     ];
 
     if (mediaElements.length === 0) {
@@ -550,36 +556,83 @@ export function detectContentType() {
 }
 
 /**
+ * 安全地点击元素
+ */
+function safeClick(element: HTMLElement): boolean {
+    try {
+        // 方法1: 创建并分发点击事件
+        const clickEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window
+        });
+        element.dispatchEvent(clickEvent);
+        return true;
+    } catch {
+        try {
+            // 方法2: 直接调用 click
+            element.click();
+            return true;
+        } catch {
+            return false;
+        }
+    }
+}
+
+/**
  * 点击节点
  */
-export async function clickNode(nodeInfo) {
+export async function clickNode(nodeInfo: LearningNode): Promise<void> {
     state.learning.currentNode = nodeInfo;
     updateLearningStatus();
 
     // 重置进度条并更新文本
-    const progressBar = document.getElementById('learning-progress-bar');
-    if (progressBar) {
-        progressBar.style.width = '0%';
-    }
+    Utils.resetProgressBar('learning-progress-bar');
     updateLearningProgressText('正在加载内容...');
 
     const shortTitle = nodeInfo.title.length > 25 ? nodeInfo.title.substring(0, 25) + '...' : nodeInfo.title;
     Logger.info(`开始学习: ${shortTitle}`);
 
-    if (nodeInfo.element) {
-        nodeInfo.element.click();
+    // 优先通过 ID 获取最新的元素引用
+    let targetElement: HTMLElement | null = null;
 
-        // 检测内容类型
-        setTimeout(() => {
-            detectContentType();
-        }, 3000);
+    if (nodeInfo.id) {
+        targetElement = document.getElementById(nodeInfo.id);
     }
+
+    // 如果通过 ID 找不到，尝试使用缓存的元素
+    if (!targetElement && nodeInfo.element) {
+        try {
+            if (nodeInfo.element.isConnected) {
+                targetElement = nodeInfo.element;
+            }
+        } catch {
+            // 元素可能已失效
+        }
+    }
+
+    if (targetElement) {
+        if (safeClick(targetElement)) {
+            // 检测内容类型
+            setTimeout(() => {
+                detectContentType();
+            }, 3000);
+            return;
+        }
+    }
+
+    // 找不到有效元素，重新扫描
+    Logger.warn('无法点击节点，重新扫描');
+    scanLearningNodes();
+    setTimeout(() => {
+        goToNextNode();
+    }, 1000);
 }
 
 /**
  * 进入下一个未完成节点
  */
-export async function goToNextNode() {
+export async function goToNextNode(): Promise<void> {
     // 重新扫描以获取最新状态
     scanLearningNodes();
 
@@ -627,8 +680,10 @@ export async function goToNextNode() {
             updateLearningProgressText('🎉 所有章节已完成！');
             Logger.success('所有学习内容已完成！');
             state.learning.isRunning = false;
-            document.getElementById('learning-start').disabled = false;
-            document.getElementById('learning-status').textContent = '已完成';
+            const startBtn = document.getElementById('learning-start') as HTMLButtonElement | null;
+            if (startBtn) startBtn.disabled = false;
+            const statusEl = document.getElementById('learning-status');
+            if (statusEl) statusEl.textContent = '已完成';
             const statusDot = document.getElementById('learning-status-dot');
             if (statusDot) {
                 statusDot.classList.remove('running');
@@ -664,12 +719,14 @@ export async function goToNextNode() {
 /**
  * 开始学习
  */
-export function startLearning() {
+export function startLearning(): void {
     if (state.learning.isRunning) return;
 
     state.learning.isRunning = true;
-    document.getElementById('learning-start').disabled = true;
-    document.getElementById('learning-status').textContent = '运行中';
+    const startBtn = document.getElementById('learning-start') as HTMLButtonElement | null;
+    if (startBtn) startBtn.disabled = true;
+    const statusEl = document.getElementById('learning-status');
+    if (statusEl) statusEl.textContent = '运行中';
     const statusDot = document.getElementById('learning-status-dot');
     if (statusDot) statusDot.classList.add('running');
 

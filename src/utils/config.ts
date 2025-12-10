@@ -1,7 +1,13 @@
 /**
+ * 配置管理模块
+ */
+
+import type { AIPreset, AIConfig, LearningConfig, ExamConfig, AppConfig } from '../types/index';
+
+/**
  * AI模型预设配置
  */
-export const AI_PRESETS = {
+export const AI_PRESETS: Record<string, AIPreset> = {
     xinliu: {
         name: '心流',
         baseURL: 'https://apis.iflow.cn/v1',
@@ -46,11 +52,32 @@ export const AI_PRESETS = {
     }
 };
 
+interface ConfigKeys {
+    learning: Record<keyof LearningConfig, string>;
+    exam: Record<keyof ExamConfig, string>;
+    progress: {
+        processedNodes: string;
+        completedChapters: string;
+    };
+}
+
+interface ConfigDefaults {
+    learning: LearningConfig;
+    exam: ExamConfig;
+}
+
+interface ConfigManagerInterface {
+    keys: ConfigKeys;
+    defaults: ConfigDefaults;
+    get<T>(category: 'learning' | 'exam', key: string): T;
+    saveAll(config: Partial<AppConfig>): void;
+    getAIConfig(aiType: string): AIConfig;
+}
+
 /**
  * 配置管理（统一存储逻辑）
  */
-export const ConfigManager = {
-    // 配置键名映射
+export const ConfigManager: ConfigManagerInterface = {
     keys: {
         learning: {
             playbackRate: 'learning_playbackRate',
@@ -70,7 +97,6 @@ export const ConfigManager = {
         }
     },
 
-    // 默认值
     defaults: {
         learning: {
             playbackRate: 1.0,
@@ -86,31 +112,40 @@ export const ConfigManager = {
         }
     },
 
-    // 获取配置值
-    get(category, key) {
-        const storageKey = this.keys[category]?.[key];
-        const defaultValue = this.defaults[category]?.[key];
+    get<T>(category: 'learning' | 'exam', key: string): T {
+        const categoryKeys = this.keys[category] as Record<string, string>;
+        const categoryDefaults = this.defaults[category] as unknown as Record<string, unknown>;
+        const storageKey = categoryKeys?.[key];
+        const defaultValue = categoryDefaults?.[key] as T;
+
         if (storageKey) {
-            return GM_getValue(storageKey, defaultValue);
+            return GM_getValue<T>(storageKey, defaultValue);
         }
         return defaultValue;
     },
 
-    // 批量保存配置
-    saveAll(config) {
+    saveAll(config: Partial<AppConfig>): void {
         // 保存学习配置
-        Object.keys(this.keys.learning).forEach(key => {
-            if (config.learning && config.learning[key] !== undefined) {
-                GM_setValue(this.keys.learning[key], config.learning[key]);
-            }
-        });
+        if (config.learning) {
+            const learningKeys = this.keys.learning as Record<string, string>;
+            Object.keys(learningKeys).forEach(key => {
+                const value = (config.learning as unknown as Record<string, unknown>)?.[key];
+                if (value !== undefined) {
+                    GM_setValue(learningKeys[key], value);
+                }
+            });
+        }
 
         // 保存答题配置
-        Object.keys(this.keys.exam).forEach(key => {
-            if (config.exam && config.exam[key] !== undefined) {
-                GM_setValue(this.keys.exam[key], config.exam[key]);
-            }
-        });
+        if (config.exam) {
+            const examKeys = this.keys.exam as Record<string, string>;
+            Object.keys(examKeys).forEach(key => {
+                const value = (config.exam as unknown as Record<string, unknown>)?.[key];
+                if (value !== undefined) {
+                    GM_setValue(examKeys[key], value);
+                }
+            });
+        }
 
         // 保存主题到localStorage
         if (config.theme) {
@@ -118,13 +153,14 @@ export const ConfigManager = {
         }
     },
 
-    // 获取AI配置
-    getAIConfig(aiType) {
-        const preset = AI_PRESETS[aiType];
+    getAIConfig(aiType: string): AIConfig {
+        const preset = AI_PRESETS[aiType] || AI_PRESETS.custom;
         return {
-            apiKey: GM_getValue(`ai_key_${aiType}`, preset.defaultKey),
-            baseURL: GM_getValue(`ai_baseurl_${aiType}`, preset.baseURL),
-            model: GM_getValue(`ai_model_${aiType}`, preset.model)
+            apiKey: GM_getValue<string>(`ai_key_${aiType}`, preset.defaultKey),
+            baseURL: GM_getValue<string>(`ai_baseurl_${aiType}`, preset.baseURL),
+            model: GM_getValue<string>(`ai_model_${aiType}`, preset.model)
         };
     }
 };
+
+export default ConfigManager;

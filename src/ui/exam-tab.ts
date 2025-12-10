@@ -1,22 +1,27 @@
-import { CONFIG } from './config-instance.js';
-import { AI_PRESETS } from '../utils/config.js';
+/**
+ * 答题标签页
+ */
+
+import { CONFIG } from './config-instance';
+import { AI_PRESETS } from '../utils/config';
+import type { AIConfig } from '../types/index';
 
 /**
  * 获取AI配置
  */
-function getAIConfig() {
+function getAIConfig(): AIConfig {
     const preset = AI_PRESETS[CONFIG.exam.currentAI];
     return {
-        apiKey: GM_getValue(`ai_key_${CONFIG.exam.currentAI}`, preset.defaultKey),
-        baseURL: GM_getValue(`ai_baseurl_${CONFIG.exam.currentAI}`, preset.baseURL),
-        model: GM_getValue(`ai_model_${CONFIG.exam.currentAI}`, preset.model)
+        apiKey: GM_getValue<string>(`ai_key_${CONFIG.exam.currentAI}`, preset.defaultKey),
+        baseURL: GM_getValue<string>(`ai_baseurl_${CONFIG.exam.currentAI}`, preset.baseURL),
+        model: GM_getValue<string>(`ai_model_${CONFIG.exam.currentAI}`, preset.model)
     };
 }
 
 /**
  * 创建答题标签页
  */
-export function createExamTab() {
+export function createExamTab(): string {
     let aiOptions = '';
     for (const [key, preset] of Object.entries(AI_PRESETS)) {
         const selected = CONFIG.exam.currentAI === key ? 'selected' : '';
@@ -83,7 +88,7 @@ export function createExamTab() {
             </div>
 
             <!-- 高级配置 -->
-            <details class="advanced-mini">
+            <details class="advanced-mini" id="exam-advanced-details">
                 <summary>⚙️ 高级</summary>
                 <div class="advanced-body">
                     <div class="advanced-row">

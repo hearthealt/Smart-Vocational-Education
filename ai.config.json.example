@@ -1,0 +1,5 @@
+{
+  "baseURL": "https://apis.iflow.cn/v1",
+  "apiKey": "sk-************************",
+  "model": "qwen3-max"
+}

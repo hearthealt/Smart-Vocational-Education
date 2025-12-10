@@ -1,9 +1,14 @@
-import { CONFIG } from './config-instance.js';
+/**
+ * 学习标签页
+ */
+
+import { CONFIG } from './config-instance';
+import { createConfigManagementSection } from './config-management';
 
 /**
  * 创建学习标签页
  */
-export function createLearningTab() {
+export function createLearningTab(): string {
     return `
         <div class="tab-inner">
             <!-- 状态区域 -->
@@ -91,6 +96,9 @@ export function createLearningTab() {
                     </div>
                 </div>
             </div>
+
+            <!-- 配置管理 -->
+            ${createConfigManagementSection()}
         </div>
     `;
 }

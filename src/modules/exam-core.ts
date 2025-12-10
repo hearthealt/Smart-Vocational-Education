@@ -1,35 +1,38 @@
-import { state } from '../utils/state.js';
-import { Logger } from '../utils/logger.js';
-import { Utils } from '../utils/index.js';
-import { CONFIG } from '../ui/config-instance.js';
-import { AI_PRESETS, ConfigManager } from '../utils/config.js';
-
 /**
  * 答题模块 - 完整功能
  */
 
+import { state } from '../utils/state';
+import { Logger } from '../utils/logger';
+import { Utils } from '../utils/index';
+import { CONFIG } from '../ui/config-instance';
+import { AI_PRESETS, ConfigManager } from '../utils/config';
+import { ErrorHandler } from '../utils/error-handler';
+import { DOMCache } from '../utils/dom-cache';
+import type { AIConfig, Question, QuestionType, QuestionOption } from '../types/index';
+
 /**
  * 获取AI配置
  */
-export function getAIConfig() {
+export function getAIConfig(): AIConfig {
     return ConfigManager.getAIConfig(CONFIG.exam.currentAI);
 }
 
 /**
  * 获取当前题目
  */
-export function getCurrentQuestion() {
+export function getCurrentQuestion(): Question | null {
     const questionEl = document.querySelector('.single, .multiple, .judge, .fill, .completion');
     if (!questionEl) return null;
 
-    const typeMap = {
+    const typeMap: Record<string, QuestionType> = {
         'single': '单选题',
         'multiple': '多选题',
         'judge': '判断题',
         'fill': '填空题',
         'completion': '填空题'
     };
-    let questionType = '未知';
+    let questionType: QuestionType = '未知';
     for (const [cls, type] of Object.entries(typeMap)) {
         if (questionEl.classList.contains(cls)) {
             questionType = type;
@@ -38,29 +41,29 @@ export function getCurrentQuestion() {
     }
 
     const titleEl = questionEl.querySelector('.single-title-content, .multiple-title-content, .judge-title-content, .fill-title-content, .completion-title-content');
-    const questionText = titleEl ? titleEl.textContent.trim() : '';
+    const questionText = titleEl ? titleEl.textContent?.trim() || '' : '';
 
-    const options = [];
+    const options: QuestionOption[] = [];
     const optionEls = questionEl.querySelectorAll('.ivu-radio-wrapper, .ivu-checkbox-wrapper');
     optionEls.forEach((optionEl, index) => {
         const optionLabel = String.fromCharCode(65 + index);
         const optionTextEl = optionEl.querySelector('span:last-child');
-        const optionText = optionTextEl ? optionTextEl.textContent.trim() : '';
-        options.push({ label: optionLabel, text: optionText, element: optionEl });
+        const optionText = optionTextEl ? optionTextEl.textContent?.trim() || '' : '';
+        options.push({ label: optionLabel, text: optionText, element: optionEl as HTMLElement });
     });
 
-    let fillInputs = [];
+    let fillInputs: HTMLInputElement[] = [];
     if (questionType === '填空题') {
-        fillInputs = Array.from(questionEl.querySelectorAll('input[type="text"], textarea, .ivu-input'));
+        fillInputs = Array.from(questionEl.querySelectorAll('input[type="text"], textarea, .ivu-input')) as HTMLInputElement[];
     }
 
-    return { type: questionType, text: questionText, options: options, fillInputs: fillInputs, element: questionEl };
+    return { type: questionType, text: questionText, options: options, fillInputs: fillInputs, element: questionEl as HTMLElement };
 }
 
 /**
  * 构建AI提示词
  */
-export function buildPrompt(question) {
+export function buildPrompt(question: Question): string {
     let prompt = '';
     if (question.type === '单选题') {
         prompt = `这是一道单选题，请仔细分析后选择正确答案。
@@ -115,9 +118,9 @@ export function buildPrompt(question) {
 }
 
 /**
- * 调用AI接口（完整版本）
+ * 调用AI接口
  */
-export function askAI(question) {
+export function askAI(question: Question): Promise<string> {
     return new Promise((resolve, reject) => {
         const aiConfig = getAIConfig();
         const prompt = buildPrompt(question);
@@ -138,7 +141,7 @@ export function askAI(question) {
         };
 
         const timeoutId = setTimeout(() => {
-            reject(new Error('请求超时（30秒）'));
+            reject(new Error('请求超时，请检查网络连接'));
         }, 30000);
 
         GM_xmlhttpRequest({
@@ -153,41 +156,59 @@ export function askAI(question) {
             onload: function(response) {
                 clearTimeout(timeoutId);
                 try {
+                    if (response.status === 401) {
+                        reject(new Error('API Key 无效或已过期，请检查配置'));
+                        return;
+                    }
+                    if (response.status === 403) {
+                        reject(new Error('API Key 权限不足或账户余额不足'));
+                        return;
+                    }
+                    if (response.status === 429) {
+                        reject(new Error('请求频率过高，请稍后再试'));
+                        return;
+                    }
+                    if (response.status === 500 || response.status === 502 || response.status === 503) {
+                        reject(new Error('AI 服务暂时不可用，请稍后再试'));
+                        return;
+                    }
                     if (response.status !== 200) {
-                        let errorMsg = `API错误(${response.status})`;
+                        // 尝试从响应中获取更详细的错误信息
+                        let errorMsg = `API 错误 (${response.status})`;
                         try {
                             const errorData = JSON.parse(response.responseText);
-                            errorMsg = errorData.error?.message || errorData.message || errorMsg;
-                        } catch (e) {
-                            errorMsg = `API返回错误: ${response.status} ${response.statusText}`;
+                            if (errorData.error?.message) {
+                                errorMsg = errorData.error.message;
+                            }
+                        } catch {
+                            // 忽略解析错误
                         }
-                        Logger.error('API错误:', errorMsg);
                         reject(new Error(errorMsg));
                         return;
                     }
 
                     const data = JSON.parse(response.responseText);
-                    if (data.choices && data.choices.length > 0) {
+                    if (data.choices && data.choices.length > 0 && data.choices[0].message?.content) {
                         const answer = data.choices[0].message.content.trim();
                         resolve(answer);
                     } else if (data.error) {
-                        reject(new Error(data.error.message || 'API返回错误'));
+                        reject(new Error(data.error.message || 'API 返回错误'));
                     } else {
-                        reject(new Error('AI返回数据格式错误'));
+                        reject(new Error('AI 返回数据异常，请检查 API 配置'));
                     }
                 } catch (error) {
-                    Logger.error('解析响应失败:', error);
-                    reject(new Error('解析AI返回数据失败'));
+                    Logger.error('解析响应失败:', response.responseText?.substring(0, 200));
+                    reject(new Error('解析 AI 响应失败，请检查 API 地址是否正确'));
                 }
             },
             onerror: (err) => {
                 clearTimeout(timeoutId);
                 Logger.error('网络错误:', err);
-                reject(new Error('网络请求失败'));
+                reject(new Error('网络请求失败，请检查网络连接和 API 地址'));
             },
             ontimeout: () => {
                 clearTimeout(timeoutId);
-                reject(new Error('请求超时'));
+                reject(new Error('请求超时，请检查网络连接'));
             }
         });
     });
@@ -196,7 +217,7 @@ export function askAI(question) {
 /**
  * 查询答案（带重试机制）
  */
-export async function searchAnswer(question) {
+export async function searchAnswer(question: Question): Promise<string | null> {
     try {
         const aiConfig = getAIConfig();
         if (!aiConfig.apiKey || aiConfig.apiKey === '') {
@@ -215,8 +236,8 @@ export async function searchAnswer(question) {
 
         return answer;
     } catch (error) {
-        Logger.error('查询失败:', error.message);
-        updateExamMessage('❌ 查询失败: ' + error.message, '#ef4444');
+        Logger.error('查询失败:', (error as Error).message);
+        updateExamMessage('❌ 查询失败: ' + (error as Error).message, '#ef4444');
         return null;
     }
 }
@@ -224,7 +245,7 @@ export async function searchAnswer(question) {
 /**
  * 选择答案
  */
-export async function selectAnswer(question, answer) {
+export async function selectAnswer(question: Question, answer: string | null): Promise<boolean> {
     if (!answer) {
         updateExamMessage('未找到答案，跳过此题', '#f59e0b');
         return false;
@@ -235,7 +256,7 @@ export async function selectAnswer(question, answer) {
                 return answer.includes(opt.label) || answer.includes(opt.text) || opt.text.includes(answer);
             });
             if (matchedOption) {
-                const radioInput = matchedOption.element.querySelector('input[type="radio"]');
+                const radioInput = matchedOption.element.querySelector('input[type="radio"]') as HTMLInputElement | null;
                 if (radioInput) {
                     radioInput.click();
                     updateExamMessage(`已选择答案：${matchedOption.label}`, '#10b981');
@@ -250,9 +271,9 @@ export async function selectAnswer(question, answer) {
                 const matchedOption = question.options.find(opt => opt.label === label);
                 if (matchedOption) {
                     // 尝试多种方式找到checkbox
-                    let checkboxInput = matchedOption.element.querySelector('input[type="checkbox"]');
+                    let checkboxInput = matchedOption.element.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
                     if (!checkboxInput) {
-                        checkboxInput = matchedOption.element.querySelector('.ivu-checkbox-input');
+                        checkboxInput = matchedOption.element.querySelector('.ivu-checkbox-input') as HTMLInputElement | null;
                     }
                     if (!checkboxInput) {
                         // 直接点击wrapper元素
@@ -291,7 +312,7 @@ export async function selectAnswer(question, answer) {
         }
         updateExamMessage('答案格式不匹配，跳过此题', '#f59e0b');
         return false;
-    } catch (error) {
+    } catch {
         return false;
     }
 }
@@ -299,8 +320,8 @@ export async function selectAnswer(question, answer) {
 /**
  * 点击下一题按钮
  */
-export function clickNextButton() {
-    const nextBtn = Array.from(document.querySelectorAll('button')).find(btn => btn.textContent.includes('下一题'));
+export function clickNextButton(): boolean {
+    const nextBtn = Array.from(document.querySelectorAll('button')).find(btn => btn.textContent?.includes('下一题'));
     if (nextBtn && !nextBtn.disabled) {
         setTimeout(() => {
             nextBtn.click();
@@ -314,8 +335,8 @@ export function clickNextButton() {
 /**
  * 点击交卷按钮
  */
-export async function clickSubmitButton() {
-    const submitBtn = Array.from(document.querySelectorAll('button')).find(btn => btn.textContent.includes('交卷'));
+export async function clickSubmitButton(): Promise<boolean> {
+    const submitBtn = Array.from(document.querySelectorAll('button')).find(btn => btn.textContent?.includes('交卷'));
     if (submitBtn && !submitBtn.disabled) {
         if (CONFIG.exam.autoSubmit) {
             updateExamMessage('正在自动交卷...', '#10b981');
@@ -337,16 +358,16 @@ export async function clickSubmitButton() {
 /**
  * 确认提交
  */
-export async function clickConfirmSubmit() {
+export async function clickConfirmSubmit(): Promise<boolean> {
     for (let i = 0; i < 10; i++) {
-        let confirmBtn = Array.from(document.querySelectorAll('button')).find(btn => btn.textContent.includes('确认提交'));
+        let confirmBtn = Array.from(document.querySelectorAll('button')).find(btn => btn.textContent?.includes('确认提交')) as HTMLButtonElement | undefined;
         if (!confirmBtn) {
             const footer = document.querySelector('.ivu-modal-confirm-footer');
-            if (footer) confirmBtn = footer.querySelector('.ivu-btn-primary');
+            if (footer) confirmBtn = footer.querySelector('.ivu-btn-primary') as HTMLButtonElement | null ?? undefined;
         }
         if (!confirmBtn) {
             const modal = document.querySelector('.ivu-modal-confirm');
-            if (modal) confirmBtn = modal.querySelector('.ivu-btn-primary');
+            if (modal) confirmBtn = modal.querySelector('.ivu-btn-primary') as HTMLButtonElement | null ?? undefined;
         }
         if (confirmBtn) {
             await Utils.sleep(500);
@@ -363,16 +384,16 @@ export async function clickConfirmSubmit() {
 /**
  * 关闭页面
  */
-export async function clickClosePage() {
+export async function clickClosePage(): Promise<boolean> {
     for (let i = 0; i < 15; i++) {
         let closeBtn = Array.from(document.querySelectorAll('button')).find(btn =>
-            btn.textContent.includes('关闭页面') || btn.textContent.includes('关闭')
-        );
+            btn.textContent?.includes('关闭页面') || btn.textContent?.includes('关闭')
+        ) as HTMLButtonElement | undefined;
         if (!closeBtn) {
             const footer = document.querySelector('.ivu-modal-confirm-footer');
             if (footer) {
-                const primaryBtn = footer.querySelector('.ivu-btn-primary');
-                if (primaryBtn && (primaryBtn.textContent.includes('关闭') || primaryBtn.textContent.includes('确定'))) {
+                const primaryBtn = footer.querySelector('.ivu-btn-primary') as HTMLButtonElement | null;
+                if (primaryBtn && (primaryBtn.textContent?.includes('关闭') || primaryBtn.textContent?.includes('确定'))) {
                     closeBtn = primaryBtn;
                 }
             }
@@ -391,7 +412,7 @@ export async function clickClosePage() {
 /**
  * 主答题循环
  */
-export async function answerQuestions() {
+export async function answerQuestions(): Promise<void> {
     while (state.exam.isRunning) {
         try {
             const question = getCurrentQuestion();
@@ -422,11 +443,23 @@ export async function answerQuestions() {
 
             if (answer) {
                 Logger.success(`AI答案: ${answer}`);
-                await selectAnswer(question, answer);
-                updateExamMessage(`✅ 第 ${state.exam.currentQuestionIndex} 题已完成`, '#10b981');
+                const selected = await selectAnswer(question, answer);
+
+                if (selected) {
+                    updateExamMessage(`✅ 第 ${state.exam.currentQuestionIndex} 题已完成`, '#10b981');
+                } else {
+                    // 答案格式不匹配，暂停
+                    Logger.error(`第${state.exam.currentQuestionIndex}题答案格式不匹配，已暂停`);
+                    updateExamMessage(`⚠️ 第 ${state.exam.currentQuestionIndex} 题答案格式不匹配，已暂停`, '#ef4444');
+                    stopExam();
+                    return;
+                }
             } else {
-                Logger.warn(`第${state.exam.currentQuestionIndex}题未获取到答案`);
-                updateExamMessage(`⚠️ 第 ${state.exam.currentQuestionIndex} 题未找到答案，跳过`, '#f59e0b');
+                // 未获取到答案，暂停
+                Logger.error(`第${state.exam.currentQuestionIndex}题未获取到答案，已暂停`);
+                updateExamMessage(`❌ 第 ${state.exam.currentQuestionIndex} 题查询失败，已暂停`, '#ef4444');
+                stopExam();
+                return;
             }
 
             await Utils.sleep(CONFIG.exam.delay);
@@ -439,34 +472,33 @@ export async function answerQuestions() {
             }
             await Utils.sleep(1000);
         } catch (error) {
-            // 捕获任何错误，确保不会卡住
+            // 捕获任何错误，暂停答题
             Logger.error('答题出错:', error);
-            updateExamMessage(`❌ 第 ${state.exam.currentQuestionIndex} 题出错: ${error.message}`, '#ef4444');
-            await Utils.sleep(2000);
-            // 尝试点击下一题继续
-            const hasNext = clickNextButton();
-            if (!hasNext) break;
-            await Utils.sleep(1000);
+            updateExamMessage(`❌ 第 ${state.exam.currentQuestionIndex} 题出错: ${(error as Error).message}，已暂停`, '#ef4444');
+            stopExam();
+            return;
         }
     }
     state.exam.isRunning = false;
-    document.getElementById('exam-start').disabled = false;
-    document.getElementById('exam-stop').disabled = true;
-    
+    const startBtn = document.getElementById('exam-start') as HTMLButtonElement | null;
+    const stopBtn = document.getElementById('exam-stop') as HTMLButtonElement | null;
+    if (startBtn) startBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
+
     const statusText = document.getElementById('exam-status');
     const statusDot = document.getElementById('exam-status-dot');
     if (statusText) statusText.textContent = '已完成';
     if (statusDot) {
         statusDot.className = 'status-dot completed';
     }
-    
+
     Logger.info('答题完成');
 }
 
 /**
  * 开始答题
  */
-export async function startExam() {
+export async function startExam(): Promise<void> {
     if (state.exam.isRunning) return;
 
     const aiConfig = getAIConfig();
@@ -479,9 +511,11 @@ export async function startExam() {
     state.exam.currentQuestionIndex = 0;
     state.exam.totalQuestions = getTotalQuestions();
 
-    document.getElementById('exam-start').disabled = true;
-    document.getElementById('exam-stop').disabled = false;
-    
+    const startBtn = document.getElementById('exam-start') as HTMLButtonElement | null;
+    const stopBtn = document.getElementById('exam-stop') as HTMLButtonElement | null;
+    if (startBtn) startBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = false;
+
     const statusText = document.getElementById('exam-status');
     const statusDot = document.getElementById('exam-status-dot');
     if (statusText) statusText.textContent = '运行中';
@@ -498,11 +532,13 @@ export async function startExam() {
 /**
  * 停止答题
  */
-export function stopExam() {
+export function stopExam(): void {
     state.exam.isRunning = false;
-    document.getElementById('exam-start').disabled = false;
-    document.getElementById('exam-stop').disabled = true;
-    
+    const startBtn = document.getElementById('exam-start') as HTMLButtonElement | null;
+    const stopBtn = document.getElementById('exam-stop') as HTMLButtonElement | null;
+    if (startBtn) startBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
+
     const statusText = document.getElementById('exam-status');
     const statusDot = document.getElementById('exam-status-dot');
     if (statusText) statusText.textContent = '已停止';
@@ -516,8 +552,8 @@ export function stopExam() {
 /**
  * 获取总题数
  */
-export function getTotalQuestions() {
-    const answerCard = document.querySelector('.topic-zpx-list');
+export function getTotalQuestions(): number {
+    const answerCard = DOMCache.get('.topic-zpx-list');
     if (answerCard) {
         const questionSpans = answerCard.querySelectorAll('.topic-zpx-main span');
         return questionSpans.length;
@@ -528,27 +564,19 @@ export function getTotalQuestions() {
 /**
  * 更新答题进度
  */
-export function updateExamProgress() {
-    document.getElementById('exam-progress').textContent =
-        `${state.exam.currentQuestionIndex}/${state.exam.totalQuestions}`;
+export function updateExamProgress(): void {
+    DOMCache.setText('exam-progress', `${state.exam.currentQuestionIndex}/${state.exam.totalQuestions}`);
 
     const percentage = state.exam.totalQuestions > 0
         ? (state.exam.currentQuestionIndex / state.exam.totalQuestions * 100)
         : 0;
-    const progressBar = document.getElementById('exam-progress-bar');
-    if (progressBar) {
-        progressBar.style.width = `${percentage}%`;
-        progressBar.setAttribute('data-progress', `${Math.round(percentage)}%`);
-    }
+    Utils.updateProgressBar('exam-progress-bar', percentage);
 }
 
 /**
  * 更新状态消息
  */
-export function updateExamMessage(text, color = '#64748b') {
-    const msg = document.getElementById('exam-message');
-    if (msg) {
-        msg.textContent = text;
-        msg.style.color = color;
-    }
+export function updateExamMessage(text: string, color: string = '#64748b'): void {
+    DOMCache.setText('exam-message', text);
+    DOMCache.setStyle('exam-message', { color });
 }
