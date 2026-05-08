@@ -32,7 +32,8 @@ import {
     getAIConfig,
     startExam,
     stopExam,
-    updateExamMessage
+    updateExamMessage,
+    saveXinliuAuth
 } from './modules/exam-core';
 
 
@@ -360,6 +361,7 @@ function handlePanelChange(e: Event): void {
             CONFIG.exam.currentAI = value as string;
             const preset = AI_PRESETS[CONFIG.exam.currentAI];
             const aiConfig = getAIConfig();
+            const isXinliu = aiConfig.baseURL.includes('apis.iflow.cn');
 
             // 更新输入框
             const apiKeyInput = document.getElementById('exam-api-key') as HTMLInputElement | null;
@@ -373,9 +375,20 @@ function handlePanelChange(e: Event): void {
             if (apiUrlInput) apiUrlInput.value = aiConfig.baseURL;
             if (modelInput) modelInput.value = aiConfig.model;
 
+            // 显示/隐藏心流配置 vs API Key 输入框
+            const apiKeyRow = document.getElementById('api-key-row');
+            const xinliuAutoConfig = document.getElementById('xinliu-auto-config');
+            const advancedDetails = document.getElementById('exam-advanced-details');
+            const examMessage = document.getElementById('exam-message');
+
+            if (apiKeyRow) apiKeyRow.style.display = isXinliu ? 'none' : 'flex';
+            if (xinliuAutoConfig) xinliuAutoConfig.style.display = isXinliu ? 'block' : 'none';
+            if (advancedDetails) advancedDetails.style.display = isXinliu ? 'none' : 'block';
+            if (examMessage) examMessage.textContent = isXinliu ? '💡 配置 BXAuth 和 Name 后点击"开始"' : '💡 配置完成后点击"开始"';
+
             updateExamMessage(`已切换到 ${preset.name}`, '#10b981');
             setTimeout(() => {
-                updateExamMessage(`就绪（使用 ${preset.name}）`, '#64748b');
+                updateExamMessage(isXinliu ? '💡 配置 BXAuth 和 Name 后点击"开始"' : `就绪（使用 ${preset.name}）`, '#64748b');
             }, 2000);
             saveConfig();
             Logger.info(`AI模型: ${preset.name}`);
@@ -418,6 +431,29 @@ function handlePanelChange(e: Event): void {
             CONFIG.exam.autoSubmit = value as boolean;
             saveConfig();
             Logger.info(`自动交卷: ${value ? '开启' : '关闭'}`);
+            break;
+
+        // 心流认证配置
+        case 'exam-xinliu-bxauth':
+            const bxAuthValue = (value as string).trim();
+            const currentName = GM_getValue<string>('xinliu_name', '');
+            saveXinliuAuth(bxAuthValue, currentName);
+            updateExamMessage('BXAuth 已保存', '#10b981');
+            setTimeout(() => {
+                updateExamMessage(`就绪（使用 ${AI_PRESETS[CONFIG.exam.currentAI].name}）`, '#64748b');
+            }, 2000);
+            Logger.info('心流 BXAuth 已更新');
+            break;
+
+        case 'exam-xinliu-name':
+            const nameValue = (value as string).trim();
+            const currentBxAuth = GM_getValue<string>('xinliu_bxauth', '');
+            saveXinliuAuth(currentBxAuth, nameValue);
+            updateExamMessage('Name 已保存', '#10b981');
+            setTimeout(() => {
+                updateExamMessage(`就绪（使用 ${AI_PRESETS[CONFIG.exam.currentAI].name}）`, '#64748b');
+            }, 2000);
+            Logger.info('心流 Name 已更新');
             break;
     }
 }

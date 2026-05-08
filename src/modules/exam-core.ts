@@ -12,6 +12,157 @@ import { DOMCache } from '../utils/dom-cache';
 import type { AIConfig, Question, QuestionType, QuestionOption } from '../types/index';
 
 /**
+ * 心流平台 API Key 管理
+ */
+const XINLIU_PLATFORM_URL = 'https://platform.iflow.cn/api/openapi/apikey';
+
+/**
+ * 检查是否使用心流 AI
+ */
+function isXinliuAI(): boolean {
+    const aiConfig = getAIConfig();
+    return aiConfig.baseURL.includes('apis.iflow.cn');
+}
+
+/**
+ * 获取心流平台认证信息
+ */
+function getXinliuAuth(): { bxAuth: string; name: string } {
+    return {
+        bxAuth: GM_getValue<string>('xinliu_bxauth', ''),
+        name: GM_getValue<string>('xinliu_name', '')
+    };
+}
+
+/**
+ * 保存心流平台认证信息
+ */
+export function saveXinliuAuth(bxAuth: string, name: string): void {
+    GM_setValue('xinliu_bxauth', bxAuth);
+    GM_setValue('xinliu_name', name);
+}
+
+/**
+ * 获取心流 API Key 信息
+ */
+function fetchXinliuApiKey(): Promise<{ success: boolean; apiKey?: string; hasExpired?: boolean; error?: string }> {
+    return new Promise((resolve) => {
+        const { bxAuth } = getXinliuAuth();
+        if (!bxAuth) {
+            resolve({ success: false, error: '未配置 BXAuth' });
+            return;
+        }
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: XINLIU_PLATFORM_URL,
+            headers: {
+                'Cookie': `BXAuth=${bxAuth}`
+            },
+            timeout: 30000,
+            onload: function(response) {
+                try {
+                    const data = JSON.parse(response.responseText);
+                    if (data.success) {
+                        const apiData = data.data || {};
+                        resolve({
+                            success: true,
+                            apiKey: apiData.apiKey || apiData.apiKeyMask,
+                            hasExpired: apiData.hasExpired || false
+                        });
+                    } else {
+                        resolve({ success: false, error: data.message || '获取失败' });
+                    }
+                } catch {
+                    resolve({ success: false, error: '解析响应失败' });
+                }
+            },
+            onerror: () => resolve({ success: false, error: '网络请求失败' }),
+            ontimeout: () => resolve({ success: false, error: '请求超时' })
+        });
+    });
+}
+
+/**
+ * 刷新心流 API Key（创建新的）
+ */
+function refreshXinliuApiKey(): Promise<{ success: boolean; apiKey?: string; error?: string }> {
+    return new Promise((resolve) => {
+        const { bxAuth, name } = getXinliuAuth();
+        if (!bxAuth) {
+            resolve({ success: false, error: '未配置 BXAuth' });
+            return;
+        }
+        if (!name) {
+            resolve({ success: false, error: '未配置 name' });
+            return;
+        }
+
+        Logger.info('正在刷新心流 API Key...');
+
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: XINLIU_PLATFORM_URL,
+            headers: {
+                'Content-Type': 'application/json',
+                'Cookie': `BXAuth=${bxAuth}`
+            },
+            data: JSON.stringify({ name }),
+            timeout: 30000,
+            onload: function(response) {
+                try {
+                    const data = JSON.parse(response.responseText);
+                    if (data.success) {
+                        const apiData = data.data || {};
+                        const newApiKey = apiData.apiKey || apiData.apiKeyMask;
+                        if (newApiKey) {
+                            // 自动保存新的 API Key
+                            GM_setValue('ai_key_xinliu', newApiKey);
+                            Logger.success(`心流 API Key 已刷新: ${newApiKey.substring(0, 10)}...`);
+                            resolve({ success: true, apiKey: newApiKey });
+                        } else {
+                            resolve({ success: false, error: '未返回新的 API Key' });
+                        }
+                    } else {
+                        resolve({ success: false, error: data.message || '刷新失败' });
+                    }
+                } catch {
+                    resolve({ success: false, error: '解析响应失败' });
+                }
+            },
+            onerror: () => resolve({ success: false, error: '网络请求失败' }),
+            ontimeout: () => resolve({ success: false, error: '请求超时' })
+        });
+    });
+}
+
+/**
+ * 确保心流 API Key 有效（检查并刷新）
+ */
+export async function ensureValidXinliuApiKey(): Promise<{ success: boolean; apiKey?: string; error?: string }> {
+    const { bxAuth } = getXinliuAuth();
+    if (!bxAuth) {
+        return { success: false, error: '未配置心流平台认证信息 (BXAuth)' };
+    }
+
+    // 先获取当前 API Key 状态
+    const keyInfo = await fetchXinliuApiKey();
+
+    if (!keyInfo.success) {
+        return keyInfo;
+    }
+
+    // 如果已过期，刷新
+    if (keyInfo.hasExpired) {
+        Logger.info('心流 API Key 已过期，正在刷新...');
+        return await refreshXinliuApiKey();
+    }
+
+    // 未过期，返回当前 key
+    return { success: true, apiKey: keyInfo.apiKey };
+}
+
+/**
  * 获取AI配置
  */
 export function getAIConfig(): AIConfig {
@@ -118,14 +269,12 @@ export function buildPrompt(question: Question): string {
 }
 
 /**
- * 调用AI接口
+ * 调用AI接口（内部实现）
  */
-export function askAI(question: Question): Promise<string> {
+function doAskAI(question: Question, apiKey: string): Promise<string> {
     return new Promise((resolve, reject) => {
         const aiConfig = getAIConfig();
         const prompt = buildPrompt(question);
-
-        Logger.info(`正在请求AI...`);
 
         const requestBody = {
             model: aiConfig.model,
@@ -149,7 +298,7 @@ export function askAI(question: Question): Promise<string> {
             url: `${aiConfig.baseURL}/chat/completions`,
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${aiConfig.apiKey}`
+                'Authorization': `Bearer ${apiKey}`
             },
             data: JSON.stringify(requestBody),
             timeout: 30000,
@@ -157,7 +306,7 @@ export function askAI(question: Question): Promise<string> {
                 clearTimeout(timeoutId);
                 try {
                     if (response.status === 401) {
-                        reject(new Error('API Key 无效或已过期，请检查配置'));
+                        reject(new Error('API_KEY_EXPIRED'));
                         return;
                     }
                     if (response.status === 403) {
@@ -173,7 +322,6 @@ export function askAI(question: Question): Promise<string> {
                         return;
                     }
                     if (response.status !== 200) {
-                        // 尝试从响应中获取更详细的错误信息
                         let errorMsg = `API 错误 (${response.status})`;
                         try {
                             const errorData = JSON.parse(response.responseText);
@@ -212,6 +360,49 @@ export function askAI(question: Question): Promise<string> {
             }
         });
     });
+}
+
+/**
+ * 调用AI接口（带心流自动刷新）
+ */
+export async function askAI(question: Question): Promise<string> {
+    const aiConfig = getAIConfig();
+    Logger.info(`正在请求AI...`);
+
+    try {
+        return await doAskAI(question, aiConfig.apiKey);
+    } catch (error) {
+        const err = error as Error;
+
+        // 如果是心流 AI 且 API Key 过期，尝试自动刷新
+        if (err.message === 'API_KEY_EXPIRED' && isXinliuAI()) {
+            Logger.info('心流 API Key 可能已过期，尝试自动刷新...');
+            updateExamMessage('🔄 API Key 过期，正在自动刷新...', '#f59e0b');
+
+            const refreshResult = await ensureValidXinliuApiKey();
+            if (refreshResult.success && refreshResult.apiKey) {
+                Logger.success('API Key 刷新成功，重新请求...');
+                updateExamMessage('✅ API Key 已刷新，重新请求中...', '#10b981');
+
+                // 更新 UI 中的 API Key 显示
+                const apiKeyInput = document.getElementById('exam-api-key') as HTMLInputElement | null;
+                if (apiKeyInput) {
+                    apiKeyInput.value = refreshResult.apiKey;
+                }
+
+                // 用新的 API Key 重试
+                return await doAskAI(question, refreshResult.apiKey);
+            } else {
+                throw new Error(`API Key 刷新失败: ${refreshResult.error || '未知错误'}，请检查 BXAuth 配置`);
+            }
+        }
+
+        // 其他错误或非心流 AI
+        if (err.message === 'API_KEY_EXPIRED') {
+            throw new Error('API Key 无效或已过期，请检查配置');
+        }
+        throw error;
+    }
 }
 
 /**
@@ -501,10 +692,30 @@ export async function answerQuestions(): Promise<void> {
 export async function startExam(): Promise<void> {
     if (state.exam.isRunning) return;
 
-    const aiConfig = getAIConfig();
-    if (!aiConfig.apiKey || aiConfig.apiKey === '') {
-        updateExamMessage('❌ 请先配置API Key', '#ef4444');
-        return;
+    // 如果是心流 AI，先自动获取 API Key
+    if (isXinliuAI()) {
+        const { bxAuth, name } = getXinliuAuth();
+        if (!bxAuth || !name) {
+            updateExamMessage('❌ 请先配置 BXAuth 和 Name', '#ef4444');
+            return;
+        }
+
+        updateExamMessage('🔄 正在获取心流 API Key...', '#2196F3');
+
+        const result = await ensureValidXinliuApiKey();
+        if (!result.success || !result.apiKey) {
+            updateExamMessage(`❌ 获取 API Key 失败: ${result.error}`, '#ef4444');
+            return;
+        }
+
+        Logger.success(`心流 API Key 已就绪: ${result.apiKey.substring(0, 15)}...`);
+    } else {
+        // 非心流，检查 API Key
+        const aiConfig = getAIConfig();
+        if (!aiConfig.apiKey || aiConfig.apiKey === '') {
+            updateExamMessage('❌ 请先配置 API Key', '#ef4444');
+            return;
+        }
     }
 
     state.exam.isRunning = true;
