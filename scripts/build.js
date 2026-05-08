@@ -38,15 +38,15 @@ function getAiConfig() {
         JSON.parse(readFileSync("./ai.config.json", "utf-8"))
       );
     return {
-      baseURL: cfg.baseURL || "https://apis.iflow.cn/v1",
+      baseURL: cfg.baseURL || "https://api.openai.com/v1",
       apiKey: cfg.apiKey || "",
-      model: cfg.model || "qwen3-max",
+      model: cfg.model || "gpt-4o-mini",
     };
   } catch {
     return {
-      baseURL: "https://apis.iflow.cn/v1",
+      baseURL: "https://api.openai.com/v1",
       apiKey: "",
-      model: "qwen3-max",
+      model: "gpt-4o-mini",
     };
   }
 }

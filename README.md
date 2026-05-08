@@ -21,12 +21,11 @@
 ### 🤖 答题模式
 - **AI智能答题**: 支持多种AI模型自动答题
 - **多模型支持**:
+  - OpenAI
   - DeepSeek
-  - 智谱AI (ChatGLM)
-  - Kimi
-  - Doubao (豆包)
-  - 讯飞星火
-  - 自定义API
+  - Claude
+  - Google Gemini
+  - 自定义 OpenAI 兼容 API
 - **自动提交**: 可选自动交卷功能
 - **答题间隔**: 可配置答题延迟,模拟真实答题
 - **高准确率**: 基于大语言模型,答题准确率高
@@ -112,29 +111,23 @@
 ### 答题配置
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| AI模型 | 使用的AI服务 | DeepSeek |
+| AI模型 | 使用的AI服务 | 自定义 |
 | API Key | AI服务密钥 | 无 |
-| API地址 | AI服务地址 | 预设 |
-| 模型名称 | 具体模型名 | 预设 |
+| API地址 | AI服务地址 | https://api.openai.com/v1 |
+| 模型名称 | 具体模型名 | gpt-4o-mini |
 | 答题间隔 | 每题答题延迟 | 3秒 |
 | 自动交卷 | 是否自动提交 | 关闭 |
 
 ## 🔑 获取API Key
 
-### DeepSeek (推荐)
-1. 访问 [DeepSeek开放平台](https://platform.deepseek.com/)
+### OpenAI
+1. 访问 [OpenAI Platform](https://platform.openai.com/)
 2. 注册并登录账号
-3. 在"API Keys"页面创建新密钥
+3. 在 API Keys 页面创建新密钥
 4. 复制密钥填入脚本配置
 
-### 智谱AI (ChatGLM)
-1. 访问 [智谱AI开放平台](https://open.bigmodel.cn/)
-2. 注册并登录
-3. 创建API Key
-4. 复制填入配置
-
-### 其他AI服务
-类似流程,访问对应平台的开放平台页面获取API密钥
+### 自定义 OpenAI 兼容服务
+如果使用代理或兼容 OpenAI Chat Completions 的服务，在高级配置中填写对应的 API 地址和模型名称即可。
 
 ## 🛠️ 开发构建
 

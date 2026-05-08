@@ -8,13 +8,6 @@ import type { AIPreset, AIConfig, LearningConfig, ExamConfig, AppConfig } from '
  * AI模型预设配置
  */
 export const AI_PRESETS: Record<string, AIPreset> = {
-    xinliu: {
-        name: '心流',
-        baseURL: 'https://apis.iflow.cn/v1',
-        model: 'qwen3-max',
-        defaultKey: '',
-        keyPlaceholder: 'sk-xxx'
-    },
     openai: {
         name: 'OpenAI',
         baseURL: 'https://api.openai.com/v1',
@@ -45,12 +38,16 @@ export const AI_PRESETS: Record<string, AIPreset> = {
     },
     custom: {
         name: '自定义',
-        baseURL: '',
-        model: '',
+        baseURL: 'https://api.openai.com/v1',
+        model: 'gpt-4o-mini',
         defaultKey: '',
-        keyPlaceholder: 'your-api-key'
+        keyPlaceholder: 'sk-xxx'
     }
 };
+
+export function normalizeAIType(aiType: string): string {
+    return AI_PRESETS[aiType] ? aiType : 'custom';
+}
 
 interface ConfigKeys {
     learning: Record<keyof LearningConfig, string>;
@@ -108,7 +105,7 @@ export const ConfigManager: ConfigManagerInterface = {
         exam: {
             delay: 3000,
             autoSubmit: false,
-            currentAI: 'xinliu'
+            currentAI: 'custom'
         }
     },
 
@@ -119,7 +116,11 @@ export const ConfigManager: ConfigManagerInterface = {
         const defaultValue = categoryDefaults?.[key] as T;
 
         if (storageKey) {
-            return GM_getValue<T>(storageKey, defaultValue);
+            const value = GM_getValue<T>(storageKey, defaultValue);
+            if (category === 'exam' && key === 'currentAI') {
+                return normalizeAIType(String(value)) as T;
+            }
+            return value;
         }
         return defaultValue;
     },
@@ -140,8 +141,11 @@ export const ConfigManager: ConfigManagerInterface = {
         if (config.exam) {
             const examKeys = this.keys.exam as Record<string, string>;
             Object.keys(examKeys).forEach(key => {
-                const value = (config.exam as unknown as Record<string, unknown>)?.[key];
+                let value = (config.exam as unknown as Record<string, unknown>)?.[key];
                 if (value !== undefined) {
+                    if (key === 'currentAI') {
+                        value = normalizeAIType(String(value));
+                    }
                     GM_setValue(examKeys[key], value);
                 }
             });
@@ -154,11 +158,12 @@ export const ConfigManager: ConfigManagerInterface = {
     },
 
     getAIConfig(aiType: string): AIConfig {
-        const preset = AI_PRESETS[aiType] || AI_PRESETS.custom;
+        const normalizedAIType = normalizeAIType(aiType);
+        const preset = AI_PRESETS[normalizedAIType];
         return {
-            apiKey: GM_getValue<string>(`ai_key_${aiType}`, preset.defaultKey),
-            baseURL: GM_getValue<string>(`ai_baseurl_${aiType}`, preset.baseURL),
-            model: GM_getValue<string>(`ai_model_${aiType}`, preset.model)
+            apiKey: GM_getValue<string>(`ai_key_${normalizedAIType}`, preset.defaultKey),
+            baseURL: GM_getValue<string>(`ai_baseurl_${normalizedAIType}`, preset.baseURL),
+            model: GM_getValue<string>(`ai_model_${normalizedAIType}`, preset.model)
         };
     }
 };

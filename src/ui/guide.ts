@@ -23,7 +23,7 @@ const guideSteps: GuideStep[] = [
     },
     {
         title: '🤖 AI智能答题',
-        content: '在答题页面，配置您的AI API密钥后，点击"开始"即可自动答题。支持多种AI模型（心流、OpenAI、Claude等）。',
+        content: '在答题页面，配置您的AI API密钥后，点击"开始"即可自动答题。支持 OpenAI 和兼容 OpenAI 接口的自定义服务。',
         target: '#tab-exam'
     },
     {

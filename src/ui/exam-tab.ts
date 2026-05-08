@@ -3,52 +3,35 @@
  */
 
 import { CONFIG } from './config-instance';
-import { AI_PRESETS } from '../utils/config';
+import { AI_PRESETS, normalizeAIType } from '../utils/config';
 import type { AIConfig } from '../types/index';
 
 /**
  * 获取AI配置
  */
 function getAIConfig(): AIConfig {
-    const preset = AI_PRESETS[CONFIG.exam.currentAI];
+    const aiType = normalizeAIType(CONFIG.exam.currentAI);
+    const preset = AI_PRESETS[aiType];
     return {
-        apiKey: GM_getValue<string>(`ai_key_${CONFIG.exam.currentAI}`, preset.defaultKey),
-        baseURL: GM_getValue<string>(`ai_baseurl_${CONFIG.exam.currentAI}`, preset.baseURL),
-        model: GM_getValue<string>(`ai_model_${CONFIG.exam.currentAI}`, preset.model)
+        apiKey: GM_getValue<string>(`ai_key_${aiType}`, preset.defaultKey),
+        baseURL: GM_getValue<string>(`ai_baseurl_${aiType}`, preset.baseURL),
+        model: GM_getValue<string>(`ai_model_${aiType}`, preset.model)
     };
-}
-
-/**
- * 获取心流认证配置
- */
-function getXinliuAuth(): { bxAuth: string; name: string } {
-    return {
-        bxAuth: GM_getValue<string>('xinliu_bxauth', ''),
-        name: GM_getValue<string>('xinliu_name', '')
-    };
-}
-
-/**
- * 检查当前是否使用心流 AI
- */
-function isXinliuSelected(): boolean {
-    const aiConfig = getAIConfig();
-    return aiConfig.baseURL.includes('apis.iflow.cn');
 }
 
 /**
  * 创建答题标签页
  */
 export function createExamTab(): string {
+    const currentAI = normalizeAIType(CONFIG.exam.currentAI);
     let aiOptions = '';
     for (const [key, preset] of Object.entries(AI_PRESETS)) {
-        const selected = CONFIG.exam.currentAI === key ? 'selected' : '';
+        const selected = currentAI === key ? 'selected' : '';
         aiOptions += `<option value="${key}" ${selected}>${preset.name}</option>`;
     }
 
     const aiConfig = getAIConfig();
-    const xinliuAuth = getXinliuAuth();
-    const isXinliu = isXinliuSelected();
+    const preset = AI_PRESETS[currentAI];
 
     return `
         <div class="tab-inner">
@@ -76,30 +59,11 @@ export function createExamTab(): string {
                         ${aiOptions}
                     </select>
                 </div>
-                <!-- 非心流：显示 API Key 输入框 -->
-                <div class="config-row config-key" id="api-key-row" style="display: ${isXinliu ? 'none' : 'flex'};">
+                <div class="config-row config-key" id="api-key-row">
                     <label class="row-label">🔑 密钥</label>
                     <input type="text" id="exam-api-key" class="input-control input-mini"
                            value="${aiConfig.apiKey}"
-                           placeholder="${AI_PRESETS[CONFIG.exam.currentAI].keyPlaceholder}">
-                </div>
-                <!-- 心流：显示自动管理提示和认证配置 -->
-                <div class="xinliu-auto-config" id="xinliu-auto-config" style="display: ${isXinliu ? 'block' : 'none'};">
-                    <div class="config-row config-key">
-                        <label class="row-label">🔐 BXAuth</label>
-                        <input type="text" id="exam-xinliu-bxauth" class="input-control input-mini"
-                               value="${xinliuAuth.bxAuth}"
-                               placeholder="心流平台 Cookie">
-                    </div>
-                    <div class="config-row config-key">
-                        <label class="row-label">👤 Name</label>
-                        <input type="text" id="exam-xinliu-name" class="input-control input-mini"
-                               value="${xinliuAuth.name}"
-                               placeholder="如: 173****0061">
-                    </div>
-                    <div class="xinliu-tip" style="font-size: 11px; color: var(--text-secondary); padding: 4px 8px; background: var(--bg-secondary); border-radius: 4px; margin-top: 4px;">
-                        💡 API Key 自动获取，过期自动刷新
-                    </div>
+                           placeholder="${preset.keyPlaceholder}">
                 </div>
                 <div class="config-row-dual">
                     <div class="config-col">
@@ -126,8 +90,7 @@ export function createExamTab(): string {
                 <button class="btn btn-primary btn-stop" id="exam-stop" disabled>⏹ 停止</button>
             </div>
 
-            <!-- 高级配置（仅非心流显示） -->
-            <details class="advanced-mini" id="exam-advanced-details" style="display: ${isXinliu ? 'none' : 'block'};">
+            <details class="advanced-mini" id="exam-advanced-details">
                 <summary>⚙️ 高级</summary>
                 <div class="advanced-body">
                     <div class="advanced-row">
@@ -146,7 +109,7 @@ export function createExamTab(): string {
             </details>
 
             <!-- 状态提示 -->
-            <div class="status-msg-mini" id="exam-message">${isXinliu ? '💡 配置 BXAuth 和 Name 后点击"开始"' : '💡 配置完成后点击"开始"'}</div>
+            <div class="status-msg-mini" id="exam-message">💡 配置完成后点击"开始"</div>
         </div>
     `;
 }

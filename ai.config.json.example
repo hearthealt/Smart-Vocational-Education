@@ -1,5 +1,5 @@
 {
-  "baseURL": "https://apis.iflow.cn/v1",
+  "baseURL": "https://api.openai.com/v1",
   "apiKey": "sk-************************",
-  "model": "qwen3-max"
+  "model": "gpt-4o-mini"
 }
