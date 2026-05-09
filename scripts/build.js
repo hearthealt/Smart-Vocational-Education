@@ -94,66 +94,6 @@ function updateViteConfig(newVersion) {
   writeFileSync("./vite.config.js", viteConfig);
 }
 
-function getDefaultChanges(versionType) {
-  const changes = { "1": [], "2": [], "3": [], "4": [] };
-
-  switch (versionType) {
-    case "patch":
-      changes["3"].push("修复了一些已知问题并提升稳定性。");
-      break;
-    case "minor":
-      changes["1"].push("新增了一些功能和体验优化。");
-      changes["3"].push("修复了一些已知问题。");
-      break;
-    case "major":
-      changes["1"].push("进行了重要功能升级和大幅优化。");
-      changes["2"].push("调整了部分交互和行为逻辑。");
-      changes["3"].push("修复了多项已知问题。");
-      break;
-    default:
-      break;
-  }
-
-  return changes;
-}
-
-function updateChangelog(newVersion, changes) {
-  const date = new Date().toISOString().split("T")[0];
-  const changelog = readFileSync("./CHANGELOG.md", "utf-8");
-
-  let newEntry = `## [${newVersion}] - ${date}\n\n`;
-
-  const categoryMap = {
-    "1": { name: "新增", key: "Added" },
-    "2": { name: "改进", key: "Changed" },
-    "3": { name: "修复", key: "Fixed" },
-    "4": { name: "删除", key: "Removed" },
-  };
-
-  for (const [category, items] of Object.entries(changes)) {
-    if (items.length > 0) {
-      const categoryName = categoryMap[category].name;
-      newEntry += `### ${categoryName}\n`;
-      for (const item of items) {
-        newEntry += `- ${item}\n`;
-      }
-      newEntry += "\n";
-    }
-  }
-
-  const versionRegex = /## \[[\d.]+\]/;
-  const match = changelog.match(versionRegex);
-
-  if (match) {
-    const insertIndex = changelog.indexOf(match[0]);
-    const updated =
-      changelog.slice(0, insertIndex) + newEntry + changelog.slice(insertIndex);
-    writeFileSync("./CHANGELOG.md", updated);
-  } else {
-    writeFileSync("./CHANGELOG.md", changelog + "\n" + newEntry);
-  }
-}
-
 function updateChangelogWithRaw(newVersion, rawMarkdown) {
   const date = new Date().toISOString().split("T")[0];
   const changelog = readFileSync("./CHANGELOG.md", "utf-8");
@@ -196,17 +136,48 @@ async function generateAiChangelog(newVersion, versionType) {
 
   let gitSummary = "";
   let gitDiffStat = "";
+  let gitUncommitted = "";
   let changelogPreview = "";
 
+  // 查找上一次版本更新的提交（package.json 中 version 字段变更）
+  let lastVersionCommit = "";
   try {
-    gitSummary = execSync('git log -5 --pretty=format:"%h %s"', {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
+    lastVersionCommit = execSync(
+      'git log --all -1 --format="%H" -- package.json',
+      { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
   } catch {}
 
+  // 获取从上次版本更新到 HEAD 的所有提交
   try {
-    gitDiffStat = execSync("git diff --stat HEAD~1..HEAD", {
+    if (lastVersionCommit) {
+      gitSummary = execSync(
+        `git log ${lastVersionCommit}..HEAD --pretty=format:"%h %s"`,
+        { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] },
+      );
+    }
+    if (!gitSummary) {
+      // 回退：最近 20 条提交
+      gitSummary = execSync('git log -20 --pretty=format:"%h %s"', {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+    }
+  } catch {}
+
+  // 获取上次版本更新到 HEAD 的 diff 统计
+  try {
+    if (lastVersionCommit) {
+      gitDiffStat = execSync(`git diff --stat ${lastVersionCommit}..HEAD`, {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+    }
+  } catch {}
+
+  // 获取当前本地未提交的变更
+  try {
+    gitUncommitted = execSync("git diff --stat", {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
     });
@@ -217,10 +188,6 @@ async function generateAiChangelog(newVersion, versionType) {
     // 只截取前一部分作为示例，防止内容过长
     changelogPreview = changelog.slice(0, 2000);
   } catch {}
-
-  const extra = await question(
-    "可选：请输入本次更新的简要说明（直接回车跳过）: ",
-  );
 
   const versionTypeText =
     versionType === "major"
@@ -246,12 +213,12 @@ async function generateAiChangelog(newVersion, versionType) {
       content: [
         `版本号: ${newVersion}`,
         `版本类型: ${versionTypeText}`,
-        extra ? `开发者补充说明: ${extra}` : "",
         changelogPreview
           ? `以下是当前项目已有的 CHANGELOG 示例片段（供你参考风格，无需照搬版本号）:\n${changelogPreview}`
           : "",
-        gitSummary ? `最近提交记录:\n${gitSummary}` : "",
-        gitDiffStat ? `最近一次 diff 统计:\n${gitDiffStat}` : "",
+        gitSummary ? `上次版本更新以来的提交记录:\n${gitSummary}` : "",
+        gitDiffStat ? `上次版本更新以来的 diff 统计:\n${gitDiffStat}` : "",
+        gitUncommitted ? `当前本地未提交的变更:\n${gitUncommitted}` : "",
       ]
         .filter(Boolean)
         .join("\n\n"),
@@ -284,24 +251,17 @@ async function main() {
     console.log('  1. 补丁版本 (Patch) - 修复 bug');
     console.log('  2. 小版本 (Minor) - 新增功能');
     console.log('  3. 大版本 (Major) - 重大更新');
-    console.log('  4. 不更新版本，直接构建');
-    console.log('  5. 快速构建 (使用默认模板)\n');
+    console.log('  4. 不更新版本，直接构建\n');
 
-    const versionChoice = await question("请输入选项 (1-5): ");
+    const versionChoice = await question("请输入选项 (1-4): ");
 
     let newVersion = currentVersion;
     let shouldUpdateVersion = true;
-    let quickMode = false;
 
     if (versionChoice === "4") {
       shouldUpdateVersion = false;
       log.step('跳过版本更新，直接构建...');
-    } else if (versionChoice === "5") {
-      quickMode = true;
-      const versionType = 'patch';
-      newVersion = bumpVersion(currentVersion, versionType);
-      log.info(`快速构建模式 - 新版本: ${colors.bright}${newVersion}${colors.reset}`);
-    } else if (!quickMode) {
+    } else {
       const versionTypeMap = { "1": "patch", "2": "minor", "3": "major" };
       const versionType = versionTypeMap[versionChoice];
 
@@ -314,102 +274,15 @@ async function main() {
       newVersion = bumpVersion(currentVersion, versionType);
       log.success(`新版本: ${colors.bright}${newVersion}${colors.reset}`);
 
-      console.log('\n' + colors.cyan + '更新日志生成方式:' + colors.reset);
-      console.log('  1. 手动输入每一条更新内容');
-      console.log('  2. 使用固定模板自动生成');
-      console.log('  3. 调用在线 AI 自动生成');
-      console.log('  4. 预览AI生成结果后再决定\n');
-      const changelogMode = await question('请输入选项 (1-4，默认 2): ');
-
-      let changes = null;
       let aiRaw = "";
-      let useAi = false;
-
-      if (quickMode) {
-        // 快速模式：使用固定模板
-        changes = getDefaultChanges(versionType);
-        log.step('使用固定模板生成更新日志');
-      } else if (changelogMode === "1") {
-        changes = { "1": [], "2": [], "3": [], "4": [] };
-
-        log.step('请输入更新内容（每个类别输入完成后直接按回车跳过）:');
-        console.log('');
-
-        const categories = [
-          { key: "1", name: "新增 (Added)" },
-          { key: "2", name: "改进 (Changed)" },
-          { key: "3", name: "修复 (Fixed)" },
-          { key: "4", name: "删除 (Removed)" },
-        ];
-
-        for (const category of categories) {
-          console.log(`\n${colors.cyan}${category.name}:${colors.reset}`);
-          let i = 1;
-          // eslint-disable-next-line no-constant-condition
-          while (true) {
-            const change = await question(`  ${i}. `);
-            if (!change.trim()) break;
-            changes[category.key].push(change.trim());
-            log.success(`已添加: ${change.trim()}`);
-            i++;
-          }
-        }
-      } else if (changelogMode === "3" || changelogMode === "4") {
-        try {
-          log.step('正在调用在线 AI 生成更新日志...');
-          aiRaw = await generateAiChangelog(newVersion, versionType);
-          
-          if (changelogMode === "4") {
-            // 预览模式
-            console.log('\n' + colors.cyan + '━'.repeat(60) + colors.reset);
-            console.log(colors.bright + 'AI 生成的更新日志预览:' + colors.reset);
-            console.log(colors.cyan + '━'.repeat(60) + colors.reset);
-            console.log(aiRaw);
-            console.log(colors.cyan + '━'.repeat(60) + colors.reset + '\n');
-            
-            const confirm = await question('是否使用此更新日志? (y/n/e，y=使用/n=使用模板/e=取消): ');
-            if (confirm.toLowerCase() === 'e') {
-              log.warn('构建已取消');
-              rl.close();
-              process.exit(0);
-            } else if (confirm.toLowerCase() === 'n') {
-              changes = getDefaultChanges(versionType);
-              log.step('已改用固定模板');
-            } else {
-              useAi = true;
-              log.success('已确认使用 AI 生成的更新日志');
-            }
-          } else {
-            useAi = true;
-            log.success('AI 更新日志生成成功');
-          }
-        } catch (e) {
-          log.error(`调用在线 AI 失败: ${e?.message ?? e}`);
-          const fallback = await question('是否改用固定模板继续? (y/n): ');
-          if (fallback.toLowerCase() !== 'y') {
-            log.warn('构建已取消');
-            rl.close();
-            process.exit(0);
-          }
-          changes = getDefaultChanges(versionType);
-          log.step('已改用固定模板');
-        }
-      } else {
-        changes = getDefaultChanges(versionType);
-        log.step('使用固定模板自动生成更新日志');
-      }
-
-      let hasChanges = false;
-      if (useAi) {
-        hasChanges = aiRaw.trim().length > 0;
-      } else {
-        hasChanges = Object.values(changes ?? {}).some((arr) => arr.length > 0);
-      }
-
-      if (!hasChanges && !quickMode) {
-        log.warn('没有输入任何更新内容');
-        const confirm = await question('是否继续? (y/n): ');
-        if (confirm.toLowerCase() !== 'y') {
+      try {
+        log.step('正在调用在线 AI 生成更新日志...');
+        aiRaw = await generateAiChangelog(newVersion, versionType);
+        log.success('AI 更新日志生成成功');
+      } catch (e) {
+        log.error(`调用在线 AI 失败: ${e?.message ?? e}`);
+        const continueAnyway = await question('是否跳过更新日志继续构建? (y/n): ');
+        if (continueAnyway.toLowerCase() !== 'y') {
           log.warn('构建已取消');
           rl.close();
           process.exit(0);
@@ -419,12 +292,8 @@ async function main() {
       log.step('正在更新版本信息...');
       updatePackageJson(newVersion);
       updateViteConfig(newVersion);
-      if (hasChanges || quickMode) {
-        if (useAi) {
-          updateChangelogWithRaw(newVersion, aiRaw);
-        } else if (changes) {
-          updateChangelog(newVersion, changes);
-        }
+      if (aiRaw.trim().length > 0) {
+        updateChangelogWithRaw(newVersion, aiRaw);
       }
       log.success('版本信息更新完成');
     }
@@ -432,6 +301,7 @@ async function main() {
     log.step('开始构建...');
     console.log('');
     execSync('vite build', { stdio: 'inherit' });
+    execSync('node scripts/obfuscate-userscript.js', { stdio: 'inherit' });
 
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);

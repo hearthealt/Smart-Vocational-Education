@@ -8,7 +8,7 @@ export default defineConfig({
             userscript: {
                 name: '智慧职教全能助手',
                 namespace: 'http://tampermonkey.net/',
-                version: '2.0.1',
+                version: '3.0.0',
                 description: '智慧职教MOOC学习助手：仅支持智慧职教MOOC平台，集成自动学习和AI智能答题功能',
                 author: 'caokun',
                 license: 'MIT',
@@ -38,7 +38,7 @@ export default defineConfig({
     ],
     build: {
         outDir: 'dist',
-        minify: false, // 用户脚本通常不压缩以便调试
-        sourcemap: false
+        minify: false,
+        sourcemap: false,
     }
 });

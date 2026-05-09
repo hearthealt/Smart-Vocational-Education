@@ -7,7 +7,6 @@ import { Logger } from '../utils/logger';
 import { Utils } from '../utils/index';
 import { CONFIG } from '../ui/config-instance';
 import { AI_PRESETS, ConfigManager, normalizeAIType } from '../utils/config';
-import { ErrorHandler } from '../utils/error-handler';
 import { DOMCache } from '../utils/dom-cache';
 import type { AIConfig, Question, QuestionType, QuestionOption } from '../types/index';
 
@@ -117,40 +116,35 @@ export function buildPrompt(question: Question): string {
     return prompt;
 }
 
-/**
- * 调用AI接口（内部实现）
- */
-function doAskAI(question: Question, apiKey: string): Promise<string> {
+function getChatCompletionsUrl(baseURL: string): string {
+    return `${baseURL.trim().replace(/\/+$/, '')}/chat/completions`;
+}
+
+function requestChatCompletion(
+    requestBody: {
+        model: string;
+        messages: Array<{ role: string; content: string }>;
+        temperature?: number;
+        max_tokens?: number;
+    },
+    apiKey: string,
+    timeoutMs = 30000
+): Promise<string> {
     return new Promise((resolve, reject) => {
         const aiConfig = getAIConfig();
-        const prompt = buildPrompt(question);
-
-        const requestBody = {
-            model: aiConfig.model,
-            messages: [
-                {
-                    role: "system",
-                    content: "你是一个专业的答题助手。你需要根据题目内容，给出准确的答案。请严格按照要求的格式返回答案。"
-                },
-                { role: "user", content: prompt }
-            ],
-            temperature: 0.1,
-            max_tokens: 500
-        };
-
         const timeoutId = setTimeout(() => {
             reject(new Error('请求超时，请检查网络连接'));
-        }, 30000);
+        }, timeoutMs);
 
         GM_xmlhttpRequest({
             method: 'POST',
-            url: `${aiConfig.baseURL}/chat/completions`,
+            url: getChatCompletionsUrl(aiConfig.baseURL),
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
             data: JSON.stringify(requestBody),
-            timeout: 30000,
+            timeout: timeoutMs,
             onload: function(response) {
                 clearTimeout(timeoutId);
                 try {
@@ -170,7 +164,7 @@ function doAskAI(question: Question, apiKey: string): Promise<string> {
                         reject(new Error('AI 服务暂时不可用，请稍后再试'));
                         return;
                     }
-                    if (response.status !== 200) {
+                    if (response.status < 200 || response.status >= 300) {
                         let errorMsg = `API 错误 (${response.status})`;
                         try {
                             const errorData = JSON.parse(response.responseText);
@@ -186,8 +180,7 @@ function doAskAI(question: Question, apiKey: string): Promise<string> {
 
                     const data = JSON.parse(response.responseText);
                     if (data.choices && data.choices.length > 0 && data.choices[0].message?.content) {
-                        const answer = data.choices[0].message.content.trim();
-                        resolve(answer);
+                        resolve(data.choices[0].message.content.trim());
                     } else if (data.error) {
                         reject(new Error(data.error.message || 'API 返回错误'));
                     } else {
@@ -209,6 +202,67 @@ function doAskAI(question: Question, apiKey: string): Promise<string> {
             }
         });
     });
+}
+
+/**
+ * 调用AI接口（内部实现）
+ */
+function doAskAI(question: Question, apiKey: string): Promise<string> {
+    const aiConfig = getAIConfig();
+    const prompt = buildPrompt(question);
+
+    return requestChatCompletion({
+        model: aiConfig.model,
+        messages: [
+            {
+                role: "system",
+                content: "你是一个专业的答题助手。你需要根据题目内容，给出准确的答案。请严格按照要求的格式返回答案。"
+            },
+            { role: "user", content: prompt }
+        ],
+        temperature: 0.1,
+        max_tokens: 500
+    }, apiKey);
+}
+
+export async function testAIConnection(): Promise<{ success: boolean; message: string }> {
+    const aiConfig = getAIConfig();
+    if (!aiConfig.apiKey.trim()) {
+        return { success: false, message: '请先填写 API Key' };
+    }
+    if (!aiConfig.baseURL.trim()) {
+        return { success: false, message: '请先填写 API 地址' };
+    }
+    if (!aiConfig.model.trim()) {
+        return { success: false, message: '请先填写模型名称' };
+    }
+
+    try {
+        await requestChatCompletion({
+            model: aiConfig.model,
+            messages: [
+                {
+                    role: 'system',
+                    content: '你是一个接口连通性测试助手。'
+                },
+                {
+                    role: 'user',
+                    content: '请只回复 OK'
+                }
+            ],
+            temperature: 0,
+            max_tokens: 8
+        }, aiConfig.apiKey, 20000);
+
+        const aiType = normalizeAIType(CONFIG.exam.currentAI);
+        return { success: true, message: `${AI_PRESETS[aiType].name} 测试通过` };
+    } catch (error) {
+        const err = error as Error;
+        if (err.message === 'API_KEY_EXPIRED') {
+            return { success: false, message: 'API Key 无效或已过期' };
+        }
+        return { success: false, message: err.message || '测试失败' };
+    }
 }
 
 /**

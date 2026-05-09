@@ -215,6 +215,51 @@ export function getUIUtilsStyles(): string {
             gap: 8px;
         }
 
+        .confirm-dialog .btn {
+            min-height: 34px;
+            padding: 0 14px;
+            border-radius: 9px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+        }
+
+        .confirm-dialog .btn-outline {
+            background: #ffffff;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+
+        .confirm-dialog .btn-outline:hover {
+            background: #f3f4f6;
+            border-color: #9ca3af;
+        }
+
+        .confirm-dialog .btn-primary {
+            background: #3b82f6;
+            color: #ffffff;
+            border-color: #3b82f6;
+        }
+
+        .confirm-dialog .btn-primary:hover {
+            background: #2563eb;
+            border-color: #2563eb;
+        }
+
+        .confirm-dialog .btn-danger {
+            background: #ef4444;
+            color: #ffffff;
+            border-color: #ef4444;
+        }
+
+        .confirm-dialog .btn-danger:hover {
+            background: #dc2626;
+            border-color: #dc2626;
+        }
+
         /* Toast 提示 */
         #toast-container {
             position: fixed;
@@ -292,6 +337,17 @@ export function getUIUtilsStyles(): string {
         .dark-theme .confirm-dialog-footer {
             background: #0f172a;
             border-top-color: #334155;
+        }
+
+        .dark-theme .confirm-dialog .btn-outline {
+            background: #111827;
+            color: #e5e7eb;
+            border-color: #374151;
+        }
+
+        .dark-theme .confirm-dialog .btn-outline:hover {
+            background: #1f2937;
+            border-color: #4b5563;
         }
 
         .dark-theme .toast {

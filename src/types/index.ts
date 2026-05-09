@@ -247,8 +247,3 @@ export interface DOMCacheItem {
     /** 缓存时间 */
     time: number;
 }
-
-/**
- * 状态变化监听器
- */
-export type StateListener = (path: string, newValue: unknown, oldValue: unknown) => void;

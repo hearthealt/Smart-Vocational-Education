@@ -5,8 +5,6 @@
 // GM_* 函数类型定义
 declare function GM_getValue<T>(key: string, defaultValue?: T): T;
 declare function GM_setValue(key: string, value: unknown): void;
-declare function GM_deleteValue(key: string): void;
-declare function GM_listValues(): string[];
 
 interface GM_XHR_Response {
     status: number;
@@ -30,52 +28,7 @@ interface GM_XHR_Options {
 
 declare function GM_xmlhttpRequest(options: GM_XHR_Options): { abort: () => void };
 
-declare function GM_addStyle(css: string): HTMLStyleElement;
-declare function GM_getResourceText(name: string): string;
-declare function GM_getResourceURL(name: string): string;
-
-declare function GM_openInTab(url: string, options?: { active?: boolean; insert?: boolean; setParent?: boolean }): { close: () => void };
-declare function GM_setClipboard(data: string, info?: string | { type?: string; mimetype?: string }): void;
-declare function GM_notification(options: {
-    text: string;
-    title?: string;
-    image?: string;
-    highlight?: boolean;
-    silent?: boolean;
-    timeout?: number;
-    onclick?: () => void;
-    ondone?: () => void;
-}): void;
-
-declare function GM_registerMenuCommand(name: string, callback: () => void, accessKey?: string): number;
-declare function GM_unregisterMenuCommand(menuCmdId: number): void;
-
-// GM_info 对象
-declare const GM_info: {
-    script: {
-        name: string;
-        namespace: string;
-        description: string;
-        version: string;
-        author: string;
-        homepage: string;
-        icon: string;
-        icon64: string;
-        grant: string[];
-        matches: string[];
-        includes: string[];
-        excludes: string[];
-        resources: Record<string, string>;
-        'run-at': string;
-    };
-    scriptHandler: string;
-    version: string;
-};
-
-// unsafeWindow
-declare const unsafeWindow: Window & typeof globalThis;
-
 // 扩展 Window 接口
 interface Window {
-    updateLogCount?: () => void;
+    updateRecentEvents?: () => void;
 }

@@ -5,6 +5,38 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [3.0.0] - 2026-05-09
+
+### 改进
+- **考试模块逻辑调整**
+  - 更新 `exam-core.ts` 与 `exam-tab.ts` 中的考试处理流程，适配移除第三方 AI 集成后的调用方式
+- **配置读取逻辑优化**
+  - 调整 `config.ts` 中的配置结构与默认值处理，减少对外部 AI 配置的依赖
+- **构建脚本调整**
+  - 更新 `scripts/build.js`，同步适配当前源码结构与打包产物生成流程
+- **使用文档更新**
+  - 调整 `README.md` 中与 AI 配置、功能说明相关的内容
+
+### 删除
+- **移除新流 AI 集成**
+  - 删除项目中对 xinliu AI 的集成逻辑与相关配置项
+  - 更新 `ai.config.json.example`，移除不再使用的配置字段
+- **移除部分旧 UI 与样式模块**
+  - 删除旧版配置管理、学习页签、日志页签等 UI 模块
+  - 清理拆分式样式文件，包括 `base.js`、`components.js`、`exam.js`、`legacy.js`、`log.js` 等
+- **精简旧类型与工具模块**
+  - 删除不再使用的 `src/types/index.js`
+  - 收窄 `dom-cache.ts`、`logger.ts`、`state.ts` 中旧界面专用的工具接口
+
+### 代码清理
+- 精简项目模块结构，减少旧版 UI、样式和工具代码的维护成本
+- 同步更新构建产物 `dist/icve-helper.user.js`
+- 清理与已移除 AI 能力相关的残留代码、文档和配置示例
+
+### 技术栈
+- 更新依赖锁定文件 `package-lock.json`
+- 调整 `package.json` 与 `vite.config.js`，适配 3.0.0 版本构建流程
+
 ## [2.0.1] - 2025-12-10
 
 ### 改进

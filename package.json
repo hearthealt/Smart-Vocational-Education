@@ -1,15 +1,16 @@
 {
   "name": "icve-helper",
-  "version": "2.0.1",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "node scripts/build.js",
-    "build:direct": "vite build",
+    "build:direct": "vite build && node scripts/obfuscate-userscript.js",
     "preview": "vite preview"
   },
   "devDependencies": {
     "@types/node": "^24.10.2",
+    "javascript-obfuscator": "^5.4.2",
     "openai": "^4.0.0",
     "typescript": "^5.9.3",
     "vite": "^5.0.0",

@@ -18,22 +18,22 @@ const guideSteps: GuideStep[] = [
     },
     {
         title: '📚 自动学习功能',
-        content: '在学习页面，点击"开始学习"按钮即可自动播放视频、浏览文档。支持调整播放倍速（最高16倍速）和静音模式。',
-        target: '#tab-learning'
+        content: '在学习页面，点击"开始学习"即可自动播放视频、浏览文档。播放倍速、完成等待和静音模式可在"配置"中调整。',
+        target: '[data-task-panel="learning"]'
     },
     {
         title: '🤖 AI智能答题',
-        content: '在答题页面，配置您的AI API密钥后，点击"开始"即可自动答题。支持 OpenAI 和兼容 OpenAI 接口的自定义服务。',
-        target: '#tab-exam'
+        content: '在答题页面，先到"配置"里设置服务、模型和 API Key，再点击"开始答题"即可自动答题。',
+        target: '[data-task-panel="exam"]'
     },
     {
         title: '📋 日志查看',
-        content: '日志面板会记录所有操作，支持按类型筛选、搜索和导出，方便追踪学习和答题进度。',
-        target: '#tab-log'
+        content: '学习和答题页面下方会显示最近操作，方便快速确认执行状态。',
+        target: '.recent-events'
     },
     {
         title: '⚙️ 小技巧',
-        content: '• 拖动标题栏可移动面板位置\n• 点击右上角按钮可切换深色主题\n• 所有配置会自动保存\n• 面板位置和折叠状态也会记住'
+        content: '• 拖动标题栏或折叠入口可移动面板\n• 学习、答题和配置是同级标签\n• 所有配置会自动保存\n• 面板位置和折叠状态也会记住'
     },
     {
         title: '✅ 开始使用',
@@ -79,7 +79,8 @@ export function resetGuide(): void {
 export function createGuideModal(): HTMLElement {
     const modal = document.createElement('div');
     modal.id = 'icve-guide-modal';
-    modal.className = 'guide-modal';
+    const panel = document.getElementById('icve-tabbed-panel');
+    modal.className = panel?.classList.contains('dark-theme') ? 'guide-modal dark-theme' : 'guide-modal';
     modal.innerHTML = `
         <div class="guide-overlay"></div>
         <div class="guide-content">
@@ -235,6 +236,16 @@ export function getGuideStyles(): string {
     return `
         /* 引导模态框 */
         .guide-modal {
+            --guide-bg: #ffffff;
+            --guide-bg-subtle: #f7f9fc;
+            --guide-bg-hover: #eaf2fb;
+            --guide-border: #dbe5f0;
+            --guide-border-strong: #bfd0e3;
+            --guide-text: #1f2a3d;
+            --guide-text-muted: #66758a;
+            --guide-primary: #3b82f6;
+            --guide-primary-hover: #2563eb;
+            --guide-primary-soft: #dbeafe;
             position: fixed;
             top: 0;
             left: 0;
@@ -252,17 +263,18 @@ export function getGuideStyles(): string {
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(2px);
+            background: rgba(31, 42, 61, 0.18);
+            backdrop-filter: none;
         }
 
         .guide-content {
             position: relative;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            background: var(--guide-bg);
+            border: 1px solid var(--guide-border);
+            border-radius: 14px;
+            box-shadow: 0 18px 42px rgba(31, 42, 61, 0.16);
             width: 90%;
-            max-width: 420px;
+            max-width: 460px;
             overflow: hidden;
             animation: guideSlideIn 0.3s ease;
         }
@@ -283,28 +295,35 @@ export function getGuideStyles(): string {
             justify-content: space-between;
             align-items: center;
             padding: 12px 16px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: var(--guide-bg);
+            color: var(--guide-text);
+            border-bottom: 1px solid var(--guide-border);
         }
 
         .guide-step-indicator {
             font-size: 13px;
-            opacity: 0.9;
+            color: var(--guide-text-muted);
+            opacity: 1;
         }
 
         .guide-close {
-            background: none;
-            border: none;
-            color: white;
-            font-size: 18px;
+            width: 32px;
+            height: 32px;
+            background: var(--guide-bg-subtle);
+            border: 1px solid var(--guide-border);
+            border-radius: 9px;
+            color: var(--guide-text-muted);
+            font-size: 14px;
             cursor: pointer;
-            opacity: 0.8;
-            transition: opacity 0.2s;
-            padding: 4px 8px;
+            opacity: 1;
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+            padding: 0;
         }
 
         .guide-close:hover {
-            opacity: 1;
+            background: var(--guide-bg-hover);
+            border-color: var(--guide-border-strong);
+            color: var(--guide-text);
         }
 
         .guide-body {
@@ -314,13 +333,13 @@ export function getGuideStyles(): string {
         .guide-title {
             margin: 0 0 12px 0;
             font-size: 18px;
-            color: #1f2937;
+            color: var(--guide-text);
         }
 
         .guide-text {
             margin: 0;
             font-size: 14px;
-            color: #4b5563;
+            color: var(--guide-text-muted);
             line-height: 1.6;
         }
 
@@ -328,9 +347,52 @@ export function getGuideStyles(): string {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 12px;
             padding: 16px 24px;
-            background: #f9fafb;
-            border-top: 1px solid #e5e7eb;
+            background: var(--guide-bg-subtle);
+            border-top: 1px solid var(--guide-border);
+        }
+
+        .guide-footer .btn {
+            min-width: 86px;
+            height: 38px;
+            padding: 0 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            box-shadow: none;
+        }
+
+        .guide-footer .guide-prev {
+            background: var(--guide-bg) !important;
+            border: 1px solid var(--guide-border) !important;
+            color: var(--guide-text-muted) !important;
+        }
+
+        .guide-footer .guide-prev:not(:disabled):hover {
+            background: var(--guide-bg-hover) !important;
+            border-color: var(--guide-border-strong) !important;
+            color: var(--guide-text) !important;
+        }
+
+        .guide-footer .guide-prev:disabled {
+            background: #f2f6fb !important;
+            border-color: #e3ebf5 !important;
+            color: #a6b3c4 !important;
+            opacity: 1;
+            cursor: not-allowed;
+        }
+
+        .guide-footer .guide-next {
+            background: var(--guide-primary) !important;
+            border: 1px solid var(--guide-primary) !important;
+            color: white !important;
+        }
+
+        .guide-footer .guide-next:hover {
+            background: var(--guide-primary-hover) !important;
+            border-color: var(--guide-primary-hover) !important;
+            filter: none;
         }
 
         .guide-dots {
@@ -342,57 +404,77 @@ export function getGuideStyles(): string {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: #d1d5db;
+            background: var(--guide-border-strong);
             cursor: pointer;
             transition: all 0.2s;
         }
 
         .guide-dot:hover {
-            background: #9ca3af;
+            background: var(--guide-text-subtle, #9aa8ba);
         }
 
         .guide-dot.active {
-            background: #667eea;
+            background: var(--guide-primary);
             transform: scale(1.2);
-        }
-
-        .guide-prev:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
         }
 
         /* 高亮目标元素 */
         .guide-highlight {
             position: relative;
             z-index: 100000;
-            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.5), 0 0 20px rgba(102, 126, 234, 0.3);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.18), 0 12px 30px rgba(31, 42, 61, 0.14);
             border-radius: 8px;
         }
 
         /* 深色主题适配 */
+        .guide-modal.dark-theme {
+            --guide-bg: #111827;
+            --guide-bg-subtle: #182235;
+            --guide-bg-hover: #223047;
+            --guide-border: #2c3a51;
+            --guide-border-strong: #3e4f68;
+            --guide-text: #e7eef9;
+            --guide-text-muted: #a8b4c7;
+            --guide-primary: #60a5fa;
+            --guide-primary-hover: #93c5fd;
+            --guide-primary-soft: rgba(96, 165, 250, 0.16);
+        }
+
         .dark-theme .guide-content {
-            background: #1e293b;
+            background: var(--guide-bg);
         }
 
         .dark-theme .guide-title {
-            color: #f1f5f9;
+            color: var(--guide-text);
         }
 
         .dark-theme .guide-text {
-            color: #94a3b8;
+            color: var(--guide-text-muted);
         }
 
         .dark-theme .guide-footer {
-            background: #0f172a;
-            border-top-color: #334155;
+            background: var(--guide-bg-subtle);
+            border-top-color: var(--guide-border);
+        }
+
+        .dark-theme .guide-footer .guide-prev {
+            background: var(--guide-bg) !important;
+            border-color: var(--guide-border) !important;
+            color: var(--guide-text-muted) !important;
+        }
+
+        .dark-theme .guide-footer .guide-prev:disabled {
+            background: #111827 !important;
+            border-color: #1f2937 !important;
+            color: #64748b !important;
         }
 
         .dark-theme .guide-dot {
-            background: #475569;
+            background: var(--guide-border-strong);
         }
 
         .dark-theme .guide-dot.active {
-            background: #818cf8;
+            background: var(--guide-primary);
         }
     `;
 }

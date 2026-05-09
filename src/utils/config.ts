@@ -15,20 +15,6 @@ export const AI_PRESETS: Record<string, AIPreset> = {
         defaultKey: '',
         keyPlaceholder: 'sk-xxx'
     },
-    claude: {
-        name: 'Claude',
-        baseURL: 'https://api.anthropic.com/v1',
-        model: 'claude-3-5-sonnet-20241022',
-        defaultKey: '',
-        keyPlaceholder: 'sk-ant-xxx'
-    },
-    gemini: {
-        name: 'Google Gemini',
-        baseURL: 'https://generativelanguage.googleapis.com/v1beta',
-        model: 'gemini-2.0-flash-exp',
-        defaultKey: '',
-        keyPlaceholder: 'AIzaSyxxx'
-    },
     deepseek: {
         name: 'DeepSeek',
         baseURL: 'https://api.deepseek.com/v1',
